@@ -2,6 +2,7 @@ import sys
 import os
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 # MACROS
 
@@ -48,13 +49,15 @@ def get_sEMG_data(subject, action_str):
     return bounded_df
 
 
+def plot_signal()
+
 def main():
 
     if len(sys.argv) != ARGS_N:
         usage()
 
     semg_df = get_sEMG_data(sys.argv[1], sys.argv[2])
-    print(semg_df)
+
 
 if __name__ == "__main__":
     main()
