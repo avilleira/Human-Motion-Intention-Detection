@@ -36,7 +36,7 @@ def get_sEMG_data(subject, action_str):
     data_file = subject + '_' + action_str + '_Data.csv'
     # Creating the path
     data_path = os.path.join(DATASET_PATH, subject, 'Data', data_file)
-    # Creating the DataFrame
+    # Creating the DataFrame reading from a file.
     signal_data = pd.read_csv(data_path)
 
     # Selecting the sEMG data and the time stamp
