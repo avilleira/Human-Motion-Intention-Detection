@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # MACROS
 
 EXIT_FAILURE = 1
-ARGS_N = 3
+ARGS_N = 4
 DATASET_PATH = '../../dataset/SIAT_LLMD20230404'
 
 
@@ -49,7 +49,25 @@ def get_sEMG_data(subject, action_str):
     return bounded_df
 
 
-def plot_signal()
+def plot_sEMG_signal(df, action, muscle='all'):
+    """
+    Plot the signal figures using matplotlib library.
+    :param df: Dataframe of the signal data
+    :type: pd.Dataframe
+    :param action: Movement the subject is doing
+    :type: string
+    :param muscle: Muscle where the signal is recorded
+    :type: string
+    """
+
+    fig = plt.figure()
+
+    if muscle == "all":
+        # New sub-figure is created, it represents all 
+        print("Todos los músculos")
+    else:
+        print("Solo un músculo")
+
 
 def main():
 
