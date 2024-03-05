@@ -66,15 +66,30 @@ def plot_sEMG_signal(df, action, muscle='all'):
         # New sub-figure is created, it represents all 
         print("Todos los músculos")
     else:
-        print("Solo un músculo")
+        ax = fig.add_subplot(111)
 
+        ax.set_title("sEMG signal from the muscle: " + muscle)
+        muscle_data = df.filter(like="semimembranosus")
+
+        ax.plot(df['Time'], muscle_data)
+        print(muscle_data)
+        
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Value')
+
+    plt.show()
 
 def main():
 
     if len(sys.argv) != ARGS_N:
         usage()
 
-    semg_df = get_sEMG_data(sys.argv[1], sys.argv[2])
+    subject = sys.argv[1]
+    act_str = sys.argv[2]
+    muscle_str = sys.argv[3]
+
+    semg_df = get_sEMG_data(subject, act_str)
+    plot_sEMG_signal(semg_df, act_str, muscle_str)
 
 
 if __name__ == "__main__":
