@@ -60,20 +60,34 @@ def plot_sEMG_signal(df, action, muscle='all'):
     :type: string
     """
 
-    fig = plt.figure()
+    fig = plt.figure('sEMG ' + action + ' Signals: ' + muscle)
 
     if muscle == "all":
         # New sub-figure is created, it represents all 
-        print("Todos los músculos")
+        plt_index = 331
+        muscle_index = 1
+        char_n = df.shape[1] - 1
+
+        for i in range(char_n):
+            ax = fig.add_subplot(plt_index)
+            ax.plot(np.array(df['Time']),np.array(df.iloc[:, muscle_index]))
+            
+            ax.set_title(df.columns[muscle_index])
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Value')
+            plt_index += 1
+            muscle_index += 1
+    
+        fig.tight_layout(rect=(0, 0, 0, 1))
+        #ax = fig.add_subplot(33)
     else:
+         # MUSCULO SUJETO Y MOVIMIENTO
+        muscle_prmpt = 'sEMG: ' + muscle
+
         ax = fig.add_subplot(111)
-
-        ax.set_title("sEMG signal from the muscle: " + muscle)
-        muscle_data = df.filter(like="semimembranosus")
-
-        ax.plot(df['Time'], muscle_data)
-        print(muscle_data)
+        ax.plot(np.array(df['Time']), np.array(df[muscle_prmpt]))
         
+        ax.set_title("sEMG signal from the muscle: " + muscle)
         ax.set_xlabel('Time')
         ax.set_ylabel('Value')
 
