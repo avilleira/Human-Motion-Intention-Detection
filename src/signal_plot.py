@@ -49,9 +49,22 @@ def get_sEMG_data(subject, action_str):
     return bounded_df
 
 
-def plot_sEMG_signal(df, action, muscle='all'):
+def signal_amplitude(df, muscle):
+    
+    max_amplitude = 0
+    print("LLEGO AQUI")
+    for value in df[muscle]:
+            if abs(value) > max_amplitude:
+                max_amplitude
+
+    return max_amplitude
+
+
+def plot_sEMG_signal(sub, df, action, muscle='all'):
     """
     Plot the signal figures using matplotlib library.
+    :param sub: Name of the subject whose data comes from
+    :type: string
     :param df: Dataframe of the signal data
     :type: pd.Dataframe
     :param action: Movement the subject is doing
@@ -60,11 +73,11 @@ def plot_sEMG_signal(df, action, muscle='all'):
     :type: string
     """
 
-    fig = plt.figure('sEMG ' + action + ' Signals: ' + muscle)
+    fig = plt.figure('sEMG ' + action + ' Signals: ' + muscle + ' from ' + sub)
 
     if muscle == "all":
-        # New sub-figure is created, it represents all 
-        plt_index = 331
+        # New sub-figure is created, it represents all the sEMG signals
+        plt_index = 331 # This index is 3 rows, three rows and starting with the figure 1
         muscle_index = 1
         char_n = df.shape[1] - 1
 
@@ -75,19 +88,20 @@ def plot_sEMG_signal(df, action, muscle='all'):
             ax.set_title(df.columns[muscle_index])
             ax.set_xlabel('Time')
             ax.set_ylabel('Value')
+
             plt_index += 1
             muscle_index += 1
-    
-        fig.tight_layout(rect=(0, 0, 0, 1))
-        #ax = fig.add_subplot(33)
-    else:
-         # MUSCULO SUJETO Y MOVIMIENTO
-        muscle_prmpt = 'sEMG: ' + muscle
 
+        fig.tight_layout()
+
+    else:
+        muscle_prmpt = 'sEMG: ' + muscle
         ax = fig.add_subplot(111)
+        max_amp = signal_amplitude(df, muscle)
+
         ax.plot(np.array(df['Time']), np.array(df[muscle_prmpt]))
+        plt.axhline(y=max_amp, color='r', linestyle='--')
         
-        ax.set_title("sEMG signal from the muscle: " + muscle)
         ax.set_xlabel('Time')
         ax.set_ylabel('Value')
 
@@ -103,7 +117,7 @@ def main():
     muscle_str = sys.argv[3]
 
     semg_df = get_sEMG_data(subject, act_str)
-    plot_sEMG_signal(semg_df, act_str, muscle_str)
+    plot_sEMG_signal(subject, semg_df, act_str, muscle_str)
 
 
 if __name__ == "__main__":
