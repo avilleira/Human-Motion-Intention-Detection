@@ -49,18 +49,26 @@ def get_sEMG_data(subject, action_str):
     return bounded_df
 
 
-def signal_amplitude(df, muscle):
+def signal_amplitude(df, muscle_id):
+    """
+    Return the maximum value of the signal.
     
-    max_amplitude = 0
-    print("LLEGO AQUI")
-    for value in df[muscle]:
-            if abs(value) > max_amplitude:
-                max_amplitude
+    :param df: Dataframe
+    :type: Pd.Dataframe
+    :param muscle_id: Muscle Id for looking for in the Dataframe
+    :type: string
+    :return: The amplitude of the signal
+    :retype: double"""
+    
+    amplitude = 0
+    for value in df[muscle_id]:
+        if amplitude < abs(value):
+            amplitude = abs(value)
 
-    return max_amplitude
+    return amplitude
 
 
-def plot_sEMG_signal(sub, df, action, muscle='all'):
+def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
     """
     Plot the signal figures using matplotlib library.
     :param sub: Name of the subject whose data comes from
@@ -97,15 +105,37 @@ def plot_sEMG_signal(sub, df, action, muscle='all'):
     else:
         muscle_prmpt = 'sEMG: ' + muscle
         ax = fig.add_subplot(111)
-        max_amp = signal_amplitude(df, muscle)
 
         ax.plot(np.array(df['Time']), np.array(df[muscle_prmpt]))
-        plt.axhline(y=max_amp, color='r', linestyle='--')
         
         ax.set_xlabel('Time')
         ax.set_ylabel('Value')
 
-    plt.show()
+
+def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
+    """
+    Plot the signal figures using matplotlib library.
+    :param sub: Name of the subject whose data comes from
+    :type: string
+    :param df: Dataframe of the signal data
+    :type: pd.Dataframe
+    :param action: Movement the subject is doing
+    :type: string
+    :param muscle: Muscle where the signal is recorded
+    :type: string
+    """
+
+    fig = plt.figure('ABS: sEMG ' + action + ' Signals: ' + muscle + ' from ' + sub)
+    muscle_prmpt = 'sEMG: ' + muscle
+    ax = fig.add_subplot(111)
+    max_amp = signal_amplitude(df, muscle_prmpt)
+
+    ax.plot(abs(np.array(df['Time'])), abs(np.array(df[muscle_prmpt])), color='green')
+    plt.axhline(y=max_amp, color='r', linestyle='-') # Print the amplitude of all
+        
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Value (Absolute)')
+
 
 def main():
 
@@ -117,7 +147,13 @@ def main():
     muscle_str = sys.argv[3]
 
     semg_df = get_sEMG_data(subject, act_str)
-    plot_sEMG_signal(subject, semg_df, act_str, muscle_str)
+    plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
+
+    if muscle_str != 'all':
+        print("ENtro")
+        plot_sEMG_signal_abs(subject, semg_df, act_str, muscle_str)
+
+    plt.show()
 
 
 if __name__ == "__main__":
