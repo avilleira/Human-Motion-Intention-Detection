@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 # MACROS
 
@@ -61,6 +62,7 @@ def signal_amplitude(df, muscle_id):
     :retype: double"""
     
     amplitude = 0
+
     for value in df[muscle_id]:
         if amplitude < abs(value):
             amplitude = abs(value)
@@ -86,12 +88,12 @@ def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
     if muscle == "all":
         # New sub-figure is created, it represents all the sEMG signals
         plt_index = 331 # This index is 3 rows, three rows and starting with the figure 1
-        muscle_index = 1
-        char_n = df.shape[1] - 1
+        muscle_index = 1 # It starts in 1 because the 0 is Time
+        char_n = df.shape[1] - 1 # Eliminates time
 
-        for i in range(char_n):
+        for _ in range(char_n):
             ax = fig.add_subplot(plt_index)
-            ax.plot(np.array(df['Time']),np.array(df.iloc[:, muscle_index]))
+            ax.plot(np.array(df['Time']), np.array(df.iloc[:, muscle_index]))
             
             ax.set_title(df.columns[muscle_index])
             ax.set_xlabel('Time')
@@ -114,7 +116,7 @@ def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
 
 def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
     """
-    Plot the signal figures using matplotlib library.
+    Plot the absolute values signal figures using matplotlib library.
     :param sub: Name of the subject whose data comes from
     :type: string
     :param df: Dataframe of the signal data
@@ -126,16 +128,48 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
     """
 
     fig = plt.figure('ABS: sEMG ' + action + ' Signals: ' + muscle + ' from ' + sub)
-    muscle_prmpt = 'sEMG: ' + muscle
-    ax = fig.add_subplot(111)
-    max_amp = signal_amplitude(df, muscle_prmpt)
 
-    ax.plot(abs(np.array(df['Time'])), abs(np.array(df[muscle_prmpt])), color='green')
-    plt.axhline(y=max_amp, color='r', linestyle='-') # Print the amplitude of all
+    
+
+    if muscle == 'all':
+        # New sub-figure is created, it represents all the sEMG signals
+        plt_index = 331 # This index is 3 rows, three rows and starting with the figure 1
+        muscle_index = 1 # It starts in 1 because the 0 is Time
+        char_n = df.shape[1] - 1 # Eliminates time
+
+        for _ in range(char_n):
+            ax = fig.add_subplot(plt_index)
+            amplitude = signal_amplitude(df, df.columns[muscle_index])
+
+            ax.plot(np.array(df['Time']), abs(np.array(df.iloc[:, muscle_index])), color='darkolivegreen')
+            plt.axhline(y=amplitude, color='r', linestyle='--') # Print the amplitude of every signal
+            
+            ax.set_title(df.columns[muscle_index])
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Value (Absolute)')
+
+            plt_index += 1
+            muscle_index += 1
         
-    ax.set_xlabel('Time')
-    ax.set_ylabel('Value (Absolute)')
+        fig.tight_layout()
 
+    else:
+        muscle_prmpt = 'sEMG: ' + muscle
+        ax = fig.add_subplot(111)
+        amplitude = signal_amplitude(df, muscle_prmpt)
+
+        ax.plot(abs(np.array(df['Time'])), abs(np.array(df[muscle_prmpt])), color='darkolivegreen')
+        plt.axhline(y=amplitude, color='r', linestyle='--') # Print the amplitude of the signal
+        
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Value (Absolute)')
+
+    #Creating the legend:
+    custom_legend = [
+        Line2D([0], [0], color='r', linestyle='--', label='Amplitude')
+    ]
+
+    fig.legend(handles=custom_legend)
 
 def main():
 
@@ -149,9 +183,7 @@ def main():
     semg_df = get_sEMG_data(subject, act_str)
     plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
 
-    if muscle_str != 'all':
-        print("ENtro")
-        plot_sEMG_signal_abs(subject, semg_df, act_str, muscle_str)
+    plot_sEMG_signal_abs(subject, semg_df, act_str, muscle_str)
 
     plt.show()
 
