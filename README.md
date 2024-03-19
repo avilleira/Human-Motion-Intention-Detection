@@ -9,3 +9,4 @@ This is a repository dedicated for my TFG. It will be a machine learning system 
 - [ ] Esquema de los músculos que intervienen
 - [ ] Calcular el valor medio y valor máximo del ruido en los primeros 3 segundos.
 - [ ] Crear un orden de activación de los músculos.
+- [ ] Restar el valor medio a la señal completa.
