@@ -50,16 +50,16 @@ def get_sEMG_data(subject, action_str):
     return bounded_df
 
 
-def signal_amplitude(df, muscle_id):
+def signal_max_amplitude(df, muscle_id):
     """
     Return the maximum value of the signal.
-    
     :param df: Dataframe
     :type: Pd.Dataframe
     :param muscle_id: Muscle Id for looking for in the Dataframe
     :type: string
     :return: The amplitude of the signal
-    :retype: double"""
+    :retype: double
+    """
     
     amplitude = 0
 
@@ -83,11 +83,11 @@ def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
     :type: string
     """
 
-    fig = plt.figure('sEMG ' + action + ' Signals: ' + muscle + ' from ' + sub)
+    fig = plt.figure('sEMG ' + action + ' signals: ' + muscle + ' from ' + sub)
 
     if muscle == "all":
         # New sub-figure is created, it represents all the sEMG signals
-        plt_index = 331 # This index is 3 rows, three rows and starting with the figure 1
+        plt_index = 521 # This index is 3 rows, three rows and starting with the figure 1
         muscle_index = 1 # It starts in 1 because the 0 is Time
         char_n = df.shape[1] - 1 # Eliminates time
 
@@ -96,13 +96,15 @@ def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
             ax.plot(np.array(df['Time']), np.array(df.iloc[:, muscle_index]))
             
             ax.set_title(df.columns[muscle_index])
+            ax.set_xlim(0, 40)
+            ax.set_ylim(-0.9, 0.9)
             ax.set_xlabel('Time')
             ax.set_ylabel('Value')
 
             plt_index += 1
             muscle_index += 1
 
-        fig.tight_layout()
+        fig.tight_layout(h_pad=0)
 
     else:
         muscle_prmpt = 'sEMG: ' + muscle
@@ -127,26 +129,26 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
     :type: string
     """
 
-    fig = plt.figure('ABS: sEMG ' + action + ' Signals: ' + muscle + ' from ' + sub)
-
-    
+    fig = plt.figure('ABS. sEMG ' + action + ' signals: ' + muscle + ' from ' + sub)
 
     if muscle == 'all':
         # New sub-figure is created, it represents all the sEMG signals
-        plt_index = 331 # This index is 3 rows, three rows and starting with the figure 1
+        plt_index = 521 # This index is 9 rows, 1 column and starting to edit in subplot 1
         muscle_index = 1 # It starts in 1 because the 0 is Time
         char_n = df.shape[1] - 1 # Eliminates time
 
         for _ in range(char_n):
             ax = fig.add_subplot(plt_index)
-            amplitude = signal_amplitude(df, df.columns[muscle_index])
+            amplitude = signal_max_amplitude(df, df.columns[muscle_index])
 
             ax.plot(np.array(df['Time']), abs(np.array(df.iloc[:, muscle_index])), color='darkolivegreen')
             plt.axhline(y=amplitude, color='r', linestyle='--') # Print the amplitude of every signal
             
             ax.set_title(df.columns[muscle_index])
-            ax.set_xlabel('Time')
-            ax.set_ylabel('Value (Absolute)')
+            #ax.set_xlabel('Time')
+            #ax.set_ylabel('Value (Absolute)')
+            # Print the results
+            print(f'Maximum amplitude of the {df.columns[muscle_index]} data: {amplitude}')
 
             plt_index += 1
             muscle_index += 1
@@ -156,13 +158,15 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
     else:
         muscle_prmpt = 'sEMG: ' + muscle
         ax = fig.add_subplot(111)
-        amplitude = signal_amplitude(df, muscle_prmpt)
+        amplitude = signal_max_amplitude(df, muscle_prmpt)
 
         ax.plot(abs(np.array(df['Time'])), abs(np.array(df[muscle_prmpt])), color='darkolivegreen')
         plt.axhline(y=amplitude, color='r', linestyle='--') # Print the amplitude of the signal
         
         ax.set_xlabel('Time')
         ax.set_ylabel('Value (Absolute)')
+        # Print the results
+        print(f'Absolute value of the sEMG: {muscle} data: {amplitude}')
 
     #Creating the legend:
     custom_legend = [
