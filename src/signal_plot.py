@@ -13,6 +13,11 @@ ARGS_N = 4
 DATASET_PATH = '../../dataset/SIAT_LLMD20230404'
 
 
+class EMG_Signal:
+
+    def __init__(self):
+        print("hOLA")
+
 def usage():
     """
     Usage error exit
@@ -215,7 +220,7 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
         plt.axhline(y=amplitude, color='r', linestyle='--') # Print the amplitude of the signal
         
         ax.set_xlabel('Time')
-        ax.set_ylabel('Value (Absolute)')
+        ax.set_ylabel('Value (Absolute)') 
         # Putting the tickers
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
@@ -228,6 +233,43 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
     ]
     fig.legend(handles=custom_legend, loc='lower right')
 
+
+def avg_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
+    """
+    Returns the mean value of the absolute signal from the init time to the end time 
+    indicated in the argument. If the time is negative, it will take all the
+    time stamp.
+    :param muscle_id: Muscle where the signal is recorded
+    :type: string
+    :param df: Absolute values dataframe. If it is negative, it returns an error and exit
+    :type: Pandas Dataframe
+    :param init_time: Time interval start point
+    :type: double
+    :param time: Time interval end point
+    :type: double
+    :return: the median value
+    :rtype: double
+    """
+
+    muscle_prmpt = 'sEMG: ' + muscle_id
+    time_arr = np.array(df['Time'])
+    signal_arr = np.array(df[muscle_prmpt])
+
+    # Check if it is the absolute signal. 
+    if np.any(signal_arr < 0):
+        sys.stderr.write("Mean error: The signal value is not positive.")
+        sys.exit(EXIT_FAILURE)
+    
+    if init_time < 0 or end_time >= time_arr[time_arr.size - 1]:
+        return np.mean(signal_arr)
+    else:
+        # Search for the indexes that correspond to this conditionTmean of the
+        t_index = np.where((time_arr >= init_time) & (time_arr <= end_time))
+        # Creates new array already bounded
+        bounded_signal = signal_arr[t_index]
+
+        return np.mean(bounded_signal)
+    
 
 def main():
 
@@ -243,6 +285,9 @@ def main():
     
     plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
     plot_sEMG_signal_abs(subject, abs_semg_df, act_str, muscle_str)
+    mean = avg_value(muscle_str, abs_semg_df, init_time=0, end_time=3)
+
+    print(f'Muscle signal avg: {mean}')
 
     plt.show()
 
