@@ -11,6 +11,7 @@ from matplotlib import ticker
 EXIT_FAILURE = 1
 ARGS_N = 4
 DATASET_PATH = '../../dataset/SIAT_LLMD20230404'
+TIME_UNTIL_MOVEMENT = 3 #seconds
 
 
 class EMG_Signal:
@@ -203,6 +204,7 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
 
             # Print the results
             print(f'Maximum amplitude of the {df.columns[muscle_index]} data: {amplitude}')
+            print(f'Avg value of the first 3 seconds: {get_avg_value(df.columns[muscle_index], df, 0, TIME_UNTIL_MOVEMENT)}')
 
             plt_index += 1
             muscle_index += 1
@@ -226,6 +228,7 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         # Print the results
         print(f'Absolute value of the sEMG: {muscle} data: {amplitude}')
+        print(f'Avg value of the first 3 seconds: {get_avg_value(df[muscle_prmpt], df, 0, TIME_UNTIL_MOVEMENT)}')
 
     #Creating the legend:
     custom_legend = [
@@ -234,7 +237,7 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
     fig.legend(handles=custom_legend, loc='lower right')
 
 
-def avg_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
+def get_avg_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
     """
     Returns the mean value of the absolute signal from the init time to the end time 
     indicated in the argument. If the time is negative, it will take all the
@@ -251,9 +254,8 @@ def avg_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
     :rtype: double
     """
 
-    muscle_prmpt = 'sEMG: ' + muscle_id
     time_arr = np.array(df['Time'])
-    signal_arr = np.array(df[muscle_prmpt])
+    signal_arr = np.array(df[muscle_id])
 
     # Check if it is the absolute signal. 
     if np.any(signal_arr < 0):
@@ -285,9 +287,6 @@ def main():
     
     plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
     plot_sEMG_signal_abs(subject, abs_semg_df, act_str, muscle_str)
-    mean = avg_value(muscle_str, abs_semg_df, init_time=0, end_time=3)
-
-    print(f'Muscle signal avg: {mean}')
 
     plt.show()
 
