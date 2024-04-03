@@ -190,9 +190,10 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
 
         for _ in range(char_n):
             ax = fig.add_subplot(plt_index)
-            amplitude = signal_max_amplitude(df, df.columns[muscle_index])
+            max_amplitude = signal_max_amplitude(df, df.columns[muscle_index])
+            
             ax.plot(np.array(df['Time']), np.array(df.iloc[:, muscle_index]), color='darkolivegreen')
-            plt.axhline(y=amplitude, color='r', linestyle='--') # Print the amplitude of every signal
+            plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of every signal
             
             ax.set_title(df.columns[muscle_index])
             ax.set_xlabel('Time')
@@ -203,8 +204,9 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
             ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
 
             # Print the results
-            print(f'Maximum amplitude of the {df.columns[muscle_index]} data: {amplitude}')
+            print(f'Maximum amplitude of the {df.columns[muscle_index]} data: {max_amplitude}')
             print(f'Avg value of the first 3 seconds: {get_avg_value(df.columns[muscle_index], df, 0, TIME_UNTIL_MOVEMENT)}')
+            print(f'MAX value of the first 3 seconds of the sEMG: {muscle} data: {get_max_value(df.columns[muscle_index], df, 0, TIME_UNTIL_MOVEMENT)}')
 
             plt_index += 1
             muscle_index += 1
@@ -216,10 +218,11 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
     else:
         muscle_prmpt = 'sEMG: ' + muscle
         ax = fig.add_subplot(111)
-        amplitude = signal_max_amplitude(df, muscle_prmpt)
+        max_amplitude = signal_max_amplitude(df, muscle_prmpt)
+        #df = remove_mean_offset(muscle_prmpt, df, get_avg_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT))
 
         ax.plot(abs(np.array(df['Time'])), abs(np.array(df[muscle_prmpt])), color='darkolivegreen')
-        plt.axhline(y=amplitude, color='r', linestyle='--') # Print the amplitude of the signal
+        plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of the signal
         
         ax.set_xlabel('Time')
         ax.set_ylabel('Value (Absolute)') 
@@ -227,8 +230,9 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         # Print the results
-        print(f'Absolute value of the sEMG: {muscle} data: {amplitude}')
-        print(f'Avg value of the first 3 seconds: {get_avg_value(df[muscle_prmpt], df, 0, TIME_UNTIL_MOVEMENT)}')
+        print(f'MAX value of the sEMG: {muscle} data: {max_amplitude}')
+        print(f'Avg value of the first 3 seconds: {get_avg_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT)}')
+        print(f'MAX value of the first 3 seconds of the sEMG: {muscle} data: {get_max_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT)}')
 
     #Creating the legend:
     custom_legend = [
@@ -250,7 +254,7 @@ def get_avg_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
     :type: double
     :param time: Time interval end point
     :type: double
-    :return: the median value
+    :return: the mean value
     :rtype: double
     """
 
@@ -262,7 +266,7 @@ def get_avg_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
         sys.stderr.write("Mean error: The signal value is not positive.")
         sys.exit(EXIT_FAILURE)
     
-    if init_time < 0 or end_time >= time_arr[time_arr.size - 1]:
+    if init_time < 0 or end_time >= time_arr[-1] or end_time < 0:
         return np.mean(signal_arr)
     else:
         # Search for the indexes that correspond to this conditionTmean of the
@@ -271,7 +275,63 @@ def get_avg_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
         bounded_signal = signal_arr[t_index]
 
         return np.mean(bounded_signal)
+
+
+def get_max_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
+    """
+    Returns the max value of the absolute signal from the init time to the end time 
+    indicated in the argument. If the time is negative, it will take all the
+    time stamp.
+    :param muscle_id: Muscle where the signal is recorded
+    :type: string
+    :param df: Absolute values dataframe. If it is negative, it returns an error and exit
+    :type: Pandas Dataframe
+    :param init_time: Time interval start point
+    :type: double
+    :param time: Time interval end point
+    :type: double
+    :return: the maximum value in that time interval
+    :rtype: double
+    """
+
+    time_arr = np.array(df['Time'])
+    signal_arr = np.array(df[muscle_id])
+
+    # Check if it is the absolute signal. 
+    if np.any(signal_arr < 0):
+        sys.stderr.write("Max value error: The signal values are not all positive.")
+        sys.exit(EXIT_FAILURE)
+
+    if init_time < 0 or end_time < 0 or end_time >= time_arr[-1]:
+        return signal_max_amplitude(df, muscle_id)
+    else:
+        t_index = np.where((time_arr >= init_time) & (time_arr <= end_time))
+        bounded_signal = signal_arr[t_index]
+
+        return bounded_signal.max()
     
+
+def remove_mean_offset(muscle_id, df, avg):
+    """
+    It returns a dataframe without the mean offset.
+    :param muscle_id: Muscle where the signal is recorded
+    :type: string
+    :param df: Absolute values dataframe. If it is negative, it returns an error and exit
+    :type: Pandas Dataframe
+    :param avg: The mean value of the time interval
+    :type: double
+    :return: The dataframe without the offset
+    :rtype: Pandas dataframe
+
+    """
+
+    filtered_df = df.copy()
+    filtered_df[muscle_id] -= avg
+    # if the value is lower than 0, it will set as 0, to avoid malfunction
+    filtered_df[muscle_id] = filtered_df[muscle_id].clip(lower=0)
+
+    return filtered_df
+
 
 def main():
 
