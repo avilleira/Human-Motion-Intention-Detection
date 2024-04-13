@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib import ticker
+from scipy.signal import hilbert
 
 # MACROS
 
@@ -14,10 +15,10 @@ DATASET_PATH = '../../dataset/SIAT_LLMD20230404'
 TIME_UNTIL_MOVEMENT = 3 #seconds
 
 
-class EMG_Signal:
+class sEMG_Signal:
 
-    def __init__(self):
-        print("hOLA")
+    def __init__(self, signal_df):
+        print("HOLA")
 
 def usage():
     """
@@ -113,133 +114,6 @@ def signal_max_amplitude(df, muscle_id):
     return amplitude
 
 
-def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
-    """
-    Plot the signal figures using matplotlib library.
-    :param sub: Name of the subject whose data comes from
-    :type: string
-    :param df: Dataframe of the signal data
-    :type: pd.Dataframe
-    :param action: Movement the subject is doing
-    :type: string
-    :param muscle: Muscle where the signal is recorded
-    :type: string
-    """
-
-    fig = plt.figure('sEMG ' + action + ' signals: ' + muscle + ' from ' + sub)
-
-    if muscle == "all":
-        # New sub-figure is created, it represents all the sEMG signals
-        plt_index = 521 # This index is 3 rows, three rows and starting with the figure 1
-        muscle_index = 1 # It starts in 1 because the 0 is Time
-        char_n = df.shape[1] - 1 # Eliminates time
-
-        for _ in range(char_n):
-            ax = fig.add_subplot(plt_index)
-            ax.plot(np.array(df['Time']), np.array(df.iloc[:, muscle_index]))
-            
-            ax.set_title(df.columns[muscle_index])
-            ax.set_ylim(-get_y_label_scale(df), get_y_label_scale(df))
-            ax.set_xlabel('Time')
-            ax.set_ylabel('Value')
-            # Putting the tickers
-            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-            ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-
-            plt_index += 1
-            muscle_index += 1
-
-        fig.tight_layout(h_pad=0)
-        fig.subplots_adjust(hspace=0.7)
-        ticker.AutoLocator()
-
-    else:
-        muscle_prmpt = 'sEMG: ' + muscle
-        ax = fig.add_subplot(111)
-
-        ax.plot(np.array(df['Time']), np.array(df[muscle_prmpt]))
-        
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Value')
-        # Putting the tickers
-        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-
-
-def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
-    """
-    Plot the absolute values signal figures using matplotlib library.
-    :param sub: Name of the subject whose data comes from
-    :type: string
-    :param df: Dataframe of the signal data
-    :type: pd.Dataframe
-    :param action: Movement the subject is doing
-    :type: string
-    :param muscle: Muscle where the signal is recorded
-    :type: string
-    """
-
-    fig = plt.figure('ABS. sEMG ' + action + ' signals: ' + muscle + ' from ' + sub)
-
-    if muscle == 'all':
-        # New sub-figure is created, it represents all the sEMG signals
-        plt_index = 521 # This index is 9 rows, 1 column and starting to edit in subplot 1
-        muscle_index = 1 # It starts in 1 because the 0 is Time
-        char_n = df.shape[1] - 1 # Eliminates time
-        plt_offs = 0.02
-
-        for _ in range(char_n):
-            ax = fig.add_subplot(plt_index)
-            max_amplitude = signal_max_amplitude(df, df.columns[muscle_index])
-            
-            ax.plot(np.array(df['Time']), np.array(df.iloc[:, muscle_index]), color='darkolivegreen')
-            plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of every signal
-            
-            ax.set_title(df.columns[muscle_index])
-            ax.set_xlabel('Time')
-            ax.set_ylabel('Value (Absolute)')
-            ax.set_ylim(0, get_y_label_scale(df) + plt_offs) # We add a little offset to see the max amplitude inside the figure
-            # Putting the tickers
-            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-            ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-
-            # Print the results
-            print(f'Maximum amplitude of the {df.columns[muscle_index]} data: {max_amplitude}')
-            print(f'Avg value of the first 3 seconds: {get_avg_value(df.columns[muscle_index], df, 0, TIME_UNTIL_MOVEMENT)}')
-            print(f'MAX value of the first 3 seconds of the sEMG: {muscle} data: {get_max_value(df.columns[muscle_index], df, 0, TIME_UNTIL_MOVEMENT)}')
-
-            plt_index += 1
-            muscle_index += 1
-        
-        fig.tight_layout(h_pad=0)
-        fig.subplots_adjust(hspace=0.7)
-        
-        
-    else:
-        muscle_prmpt = 'sEMG: ' + muscle
-        ax = fig.add_subplot(111)
-        max_amplitude = signal_max_amplitude(df, muscle_prmpt)
-        #df = remove_mean_offset(muscle_prmpt, df, get_avg_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT))
-
-        ax.plot(abs(np.array(df['Time'])), abs(np.array(df[muscle_prmpt])), color='darkolivegreen')
-        plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of the signal
-        
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Value (Absolute)') 
-        # Putting the tickers
-        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-        # Print the results
-        print(f'MAX value of the sEMG: {muscle} data: {max_amplitude}')
-        print(f'Avg value of the first 3 seconds: {get_avg_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT)}')
-        print(f'MAX value of the first 3 seconds of the sEMG: {muscle} data: {get_max_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT)}')
-
-    #Creating the legend:
-    custom_legend = [
-        Line2D([0], [0], color='r', linestyle='--', label='Max. Amplitude')
-    ]
-    fig.legend(handles=custom_legend, loc='lower right')
-
 
 def get_avg_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
     """
@@ -333,6 +207,147 @@ def remove_mean_offset(muscle_id, df, avg):
     return filtered_df
 
 
+def get_signal_envelope(muscle_id, df):
+    env = hilbert(np.array(df[muscle_id]), 40)
+
+# -------------- PLOT FUNCTIONS --------------
+
+def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
+    """
+    Plot the signal figures using matplotlib library.
+    :param sub: Name of the subject whose data comes from
+    :type: string
+    :param df: Dataframe of the signal data
+    :type: pd.Dataframe
+    :param action: Movement the subject is doing
+    :type: string
+    :param muscle: Muscle where the signal is recorded
+    :type: string
+    """
+
+    fig = plt.figure('sEMG ' + action + ' signals: ' + muscle + ' from ' + sub)
+
+    if muscle == "all":
+        # New sub-figure is created, it represents all the sEMG signals
+        plt_index = 521 # This index is 3 rows, three rows and starting with the figure 1
+        muscle_index = 1 # It starts in 1 because the 0 is Time
+        char_n = df.shape[1] - 1 # Eliminates time
+
+        for _ in range(char_n):
+            ax = fig.add_subplot(plt_index)
+            ax.plot(np.array(df['Time']), np.array(df.iloc[:, muscle_index]))
+            
+            ax.set_title(df.columns[muscle_index])
+            ax.set_ylim(-get_y_label_scale(df), get_y_label_scale(df))
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Value')
+            # Putting the tickers
+            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+            ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+            plt_index += 1
+            muscle_index += 1
+
+        fig.tight_layout(h_pad=0)
+        fig.subplots_adjust(hspace=0.7)
+        ticker.AutoLocator()
+
+    else:
+        muscle_prmpt = 'sEMG: ' + muscle
+        ax = fig.add_subplot(111)
+
+        ax.plot(np.array(df['Time']), np.array(df[muscle_prmpt]))
+        
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Value')
+        # Putting the tickers
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+
+def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
+    """
+    Plot the absolute values signal figures using matplotlib library.
+    :param sub: Name of the subject whose data comes from
+    :type: string
+    :param df: Dataframe of the signal data
+    :type: pd.Dataframe
+    :param action: Movement the subject is doing
+    :type: string
+    :param muscle: Muscle where the signal is recorded
+    :type: string
+    """
+
+    fig = plt.figure('ABS. sEMG ' + action + ' signals: ' + muscle + ' from ' + sub)
+
+    if muscle == 'all':
+        # New sub-figure is created, it represents all the sEMG signals
+        plt_index = 521 # This index is 9 rows, 1 column and starting to edit in subplot 1
+        muscle_index = 1 # It starts in 1 because the 0 is Time
+        char_n = df.shape[1] - 1 # Eliminates time
+        plt_offs = 0.02
+
+        for _ in range(char_n):
+            ax = fig.add_subplot(plt_index)
+            # This line removes offset in the minimum values:
+            df = remove_mean_offset(df.columns[muscle_index], df, get_avg_value(df.columns[muscle_index], df, 0, TIME_UNTIL_MOVEMENT))
+            max_amplitude = signal_max_amplitude(df, df.columns[muscle_index])
+            
+            ax.plot(np.array(df['Time']), np.array(df.iloc[:, muscle_index]), color='darkolivegreen')
+            plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of every signal
+            
+            ax.set_title(df.columns[muscle_index])
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Value (Absolute)')
+            ax.set_ylim(0, get_y_label_scale(df) + plt_offs) # We add a little offset to see the max amplitude inside the figure
+            # Putting the tickers
+            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+            ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+            # Print the results
+            print(f'Maximum amplitude of the {df.columns[muscle_index]} data: {max_amplitude}')
+            print(f'Avg value of the first 3 seconds: {get_avg_value(df.columns[muscle_index], df, 0, TIME_UNTIL_MOVEMENT)}')
+            print(f'MAX value of the first 3 seconds of the sEMG: {muscle} data: {get_max_value(df.columns[muscle_index], df, 0, TIME_UNTIL_MOVEMENT)}')
+
+            plt_index += 1
+            muscle_index += 1
+        
+        fig.tight_layout(h_pad=0)
+        fig.subplots_adjust(hspace=0.7)
+        
+        
+    else:
+        muscle_prmpt = 'sEMG: ' + muscle
+        ax = fig.add_subplot(111)
+        df = remove_mean_offset(muscle_prmpt, df, get_avg_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT))
+        max_amplitude = signal_max_amplitude(df, muscle_prmpt)
+
+        ax.plot(abs(np.array(df['Time'])), abs(np.array(df[muscle_prmpt])), color='darkolivegreen')
+        plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of the signal
+        
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Value (Absolute)') 
+        # Putting the tickers
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        # Print the results
+        print(f'MAX value of the sEMG: {muscle} data: {max_amplitude}')
+        print(f'Avg value of the first 3 seconds: {get_avg_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT)}')
+        print(f'MAX value of the first 3 seconds of the sEMG: {muscle} data: {get_max_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT)}')
+
+    #Creating the legend:
+    custom_legend = [
+        Line2D([0], [0], color='r', linestyle='--', label='Max. Amplitude')
+    ]
+    fig.legend(handles=custom_legend, loc='lower right')
+
+    get_signal_envelope(muscle_prmpt, df)
+
+
+def plot_envelope_signal(sub, df, action, muscle='all'):
+    print('Nueva función')
+
+
 def main():
 
     if len(sys.argv) != ARGS_N:
@@ -347,7 +362,6 @@ def main():
     
     plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
     plot_sEMG_signal_abs(subject, abs_semg_df, act_str, muscle_str)
-
     plt.show()
 
 
