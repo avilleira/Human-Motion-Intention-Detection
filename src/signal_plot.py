@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib import ticker
-from scipy.signal import hilbert
+from scipy.signal import hilbert, convolve
 
 # MACROS
 
@@ -13,6 +13,8 @@ EXIT_FAILURE = 1
 ARGS_N = 4
 DATASET_PATH = '../../dataset/SIAT_LLMD20230404'
 TIME_UNTIL_MOVEMENT = 3 #seconds
+ENVELOP_FILTER_LENGTH = 500
+PLT_AMPLITUDE_OFFSET = 0.02
 
 
 class sEMG_Signal:
@@ -137,7 +139,7 @@ def get_avg_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
 
     # Check if it is the absolute signal. 
     if np.any(signal_arr < 0):
-        sys.stderr.write("Mean error: The signal value is not positive.")
+        sys.stderr.write("Mean error: The signal value is not positive.\n")
         sys.exit(EXIT_FAILURE)
     
     if init_time < 0 or end_time >= time_arr[-1] or end_time < 0:
@@ -153,18 +155,7 @@ def get_avg_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
 
 def get_max_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
     """
-    Returns the max value of the absolute signal from the init time to the end time 
-    indicated in the argument. If the time is negative, it will take all the
-    time stamp.
-    :param muscle_id: Muscle where the signal is recorded
-    :type: string
-    :param df: Absolute values dataframe. If it is negative, it returns an error and exit
-    :type: Pandas Dataframe
-    :param init_time: Time interval start point
-    :type: double
-    :param time: Time interval end point
-    :type: double
-    :return: the maximum value in that time interval
+    Returns the max value of the absolute signal from the init time to the end time muscle_data, N=5
     :rtype: double
     """
 
@@ -173,7 +164,7 @@ def get_max_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
 
     # Check if it is the absolute signal. 
     if np.any(signal_arr < 0):
-        sys.stderr.write("Max value error: The signal values are not all positive.")
+        sys.stderr.write("Max value error: The signal values are not all positive.\n")
         sys.exit(EXIT_FAILURE)
 
     if init_time < 0 or end_time < 0 or end_time >= time_arr[-1]:
@@ -208,7 +199,20 @@ def remove_mean_offset(muscle_id, df, avg):
 
 
 def get_signal_envelope(muscle_id, df):
-    env = hilbert(np.array(df[muscle_id]), 40)
+    """
+    Calculates the signal envelope using the hilbert transform
+    :param muscle_id: Muscle where the signal is recorded
+    :type: string
+    :param df: Absolute values dataframe. If it is negative, it returns an error and exit
+    :type: Pandas Dataframe
+    :return: The signal envelope
+    :rtype: Pandas dataframe
+    """
+
+    env = np.real(hilbert(np.array(df[muscle_id])))
+    
+    filter = np.ones(ENVELOP_FILTER_LENGTH) / ENVELOP_FILTER_LENGTH
+    return convolve(env, filter, mode='same')
 
 # -------------- PLOT FUNCTIONS --------------
 
@@ -250,7 +254,7 @@ def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
 
         fig.tight_layout(h_pad=0)
         fig.subplots_adjust(hspace=0.7)
-        ticker.AutoLocator()
+        
 
     else:
         muscle_prmpt = 'sEMG: ' + muscle
@@ -264,13 +268,14 @@ def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
 
+    ticker.AutoLocator()
 
 def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
     """
     Plot the absolute values signal figures using matplotlib library.
     :param sub: Name of the subject whose data comes from
     :type: string
-    :param df: Dataframe of the signal data
+    :param df: Dataframe of the absolute signal data
     :type: pd.Dataframe
     :param action: Movement the subject is doing
     :type: string
@@ -285,7 +290,6 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
         plt_index = 521 # This index is 9 rows, 1 column and starting to edit in subplot 1
         muscle_index = 1 # It starts in 1 because the 0 is Time
         char_n = df.shape[1] - 1 # Eliminates time
-        plt_offs = 0.02
 
         for _ in range(char_n):
             ax = fig.add_subplot(plt_index)
@@ -299,7 +303,7 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
             ax.set_title(df.columns[muscle_index])
             ax.set_xlabel('Time')
             ax.set_ylabel('Value (Absolute)')
-            ax.set_ylim(0, get_y_label_scale(df) + plt_offs) # We add a little offset to see the max amplitude inside the figure
+            ax.set_ylim(0, get_y_label_scale(df) + PLT_AMPLITUDE_OFFSET) # We add a little offset to see the max amplitude inside the figure
             # Putting the tickers
             ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
             ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
@@ -340,12 +344,71 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
         Line2D([0], [0], color='r', linestyle='--', label='Max. Amplitude')
     ]
     fig.legend(handles=custom_legend, loc='lower right')
-
-    get_signal_envelope(muscle_prmpt, df)
+    ticker.AutoLocator()
 
 
 def plot_envelope_signal(sub, df, action, muscle='all'):
-    print('Nueva función')
+    """
+    Plot the result of the calculated Envelope signal in a new figure
+    :param sub: Name of the subject whose data comes from
+    :type: string
+    :param df: Dataframe of the RAW signal data 
+    :type: pd.Dataframe
+    :param action: Movement the subject is doing
+    :type: string
+    :param muscle: Muscle where the signal is recorded
+    :type: stringplt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of the signal
+    """
+
+    env_fig = plt.figure('Envelope: sEMG ' + action + ' signals: ' + muscle + ' from ' + sub)
+    # Getting absolute value of the signal
+    abs_df = get_abs_sEMG_data(df)
+    
+    if muscle == "all":
+        # New sub-figure is created, it represents all the sEMG signals
+        plt_index = 521 # This index is 3 rows, three rows and starting with the figure 1
+        muscle_index = 1 # It starts in 1 because the 0 is Time
+        char_n = abs_df.shape[1] - 1 # Eliminates time
+
+        for _ in range(char_n):
+            ax = env_fig.add_subplot(plt_index)
+            #Deleting offset
+            abs_df = remove_mean_offset(abs_df.columns[muscle_index], abs_df, get_avg_value(abs_df.columns[muscle_index], abs_df, 0, TIME_UNTIL_MOVEMENT))
+            max_amplitude = signal_max_amplitude(abs_df, abs_df.columns[muscle_index])
+            
+            ax.plot(np.array(abs_df['Time']), get_signal_envelope(abs_df.columns[muscle_index], abs_df), 'darkgoldenrod')
+            plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of the signal
+            
+            ax.set_title(abs_df.columns[muscle_index])
+            ax.set_ylim(0, get_y_label_scale(abs_df) + PLT_AMPLITUDE_OFFSET)
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Envelope Value')
+            # Putting the tickers
+            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+            ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+            plt_index += 1
+            muscle_index += 1
+
+        env_fig.tight_layout(h_pad=0)
+        env_fig.subplots_adjust(hspace=0.7)
+
+    else:
+        muscle_prmpt = 'sEMG: ' + muscle
+        ax = env_fig.add_subplot(111)
+        abs_df = remove_mean_offset(muscle_prmpt, abs_df, get_avg_value(muscle_prmpt, abs_df, 0, TIME_UNTIL_MOVEMENT))
+        max_amplitude = signal_max_amplitude(abs_df, muscle_prmpt)
+
+        ax.plot(np.array(abs_df['Time']), get_signal_envelope(muscle_prmpt, abs_df), 'darkgoldenrod')
+        plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of the signal
+        
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Value')
+        # Putting the tickers
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+    ticker.AutoLocator()
 
 
 def main():
@@ -362,6 +425,7 @@ def main():
     
     plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
     plot_sEMG_signal_abs(subject, abs_semg_df, act_str, muscle_str)
+    plot_envelope_signal(subject, semg_df, act_str, muscle_str)
     plt.show()
 
 
