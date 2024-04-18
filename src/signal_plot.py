@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib import ticker
+from scipy import signal
 from scipy.signal import hilbert, convolve
 
 # MACROS
@@ -13,8 +14,9 @@ EXIT_FAILURE = 1
 ARGS_N = 4
 DATASET_PATH = '../../dataset/SIAT_LLMD20230404'
 TIME_UNTIL_MOVEMENT = 3 #seconds
-ENVELOP_FILTER_LENGTH = 500
+ENVELOP_FILTER_LENGTH = 100
 PLT_AMPLITUDE_OFFSET = 0.02
+SAMPLING_FREQ = 1926
 
 
 class sEMG_Signal:
@@ -198,6 +200,37 @@ def remove_mean_offset(muscle_id, df, avg):
     return filtered_df
 
 
+def hl_envelopes_idx(df, muscle_id, dmin=1, dmax=1, split=False):
+    """
+    Input :
+    s: 1d-array, data signal from which to extract high and low envelopes
+    dmin, dmax: int, optional, size of chunks, use this if the size of the input signal is too big
+    split: bool, optional, if True, split the signal in half along its mean, might help to generate the envelope in some cases
+    Output :
+    lmin,lmax : high/low envelope idx of input signal s
+    """
+    s = np.array(df[muscle_id])
+    # locals min      
+    lmin = (np.diff(np.sign(np.diff(s))) > 0).nonzero()[0] + 1 
+    # locals max
+    lmax = (np.diff(np.sign(np.diff(s))) < 0).nonzero()[0] + 1 
+    
+    if split:
+        # s_mid is zero if s centered around x-axis or more generally mean of signal
+        s_mid = np.mean(s) 
+        # pre-sorting of locals min based on relative position with respect to s_mid 
+        lmin = lmin[s[lmin]<s_mid]
+        # pre-sorting of local max based on relative position with respect to s_mid 
+        lmax = lmax[s[lmax]>s_mid]
+
+    # global min of dmin-chunks of locals min 
+    lmin = lmin[[i+np.argmin(s[lmin[i:i+dmin]]) for i in range(0,len(lmin),dmin)]]
+    # global max of dmax-chunks of locals max 
+    lmax = lmax[[i+np.argmax(s[lmax[i:i+dmax]]) for i in range(0,len(lmax),dmax)]]
+    
+    return lmin,lmax
+
+
 def get_signal_envelope(muscle_id, df):
     """
     Calculates the signal envelope using the hilbert transform
@@ -209,10 +242,16 @@ def get_signal_envelope(muscle_id, df):
     :rtype: Pandas dataframe
     """
 
+    # Transform data to only using real part
     env = np.real(hilbert(np.array(df[muscle_id])))
-    
+    # Applying the length filter
     filter = np.ones(ENVELOP_FILTER_LENGTH) / ENVELOP_FILTER_LENGTH
+
     return convolve(env, filter, mode='same')
+
+def get_signal_spectrogram (muscle_id, df):
+    print("hola")
+    
 
 # -------------- PLOT FUNCTIONS --------------
 
@@ -361,7 +400,6 @@ def plot_envelope_signal(sub, df, action, muscle='all'):
     """
 
     env_fig = plt.figure('Envelope: sEMG ' + action + ' signals: ' + muscle + ' from ' + sub)
-    # Getting absolute value of the signal
     abs_df = get_abs_sEMG_data(df)
     
     if muscle == "all":
@@ -375,8 +413,9 @@ def plot_envelope_signal(sub, df, action, muscle='all'):
             #Deleting offset
             abs_df = remove_mean_offset(abs_df.columns[muscle_index], abs_df, get_avg_value(abs_df.columns[muscle_index], abs_df, 0, TIME_UNTIL_MOVEMENT))
             max_amplitude = signal_max_amplitude(abs_df, abs_df.columns[muscle_index])
+            lmin, lmax = hl_envelopes_idx(df, df.columns[muscle_index],dmin=ENVELOP_FILTER_LENGTH, dmax=ENVELOP_FILTER_LENGTH)
             
-            ax.plot(np.array(abs_df['Time']), get_signal_envelope(abs_df.columns[muscle_index], abs_df), 'darkgoldenrod')
+            ax.plot(np.array(abs_df['Time'])[lmax], np.array(df.iloc[:, muscle_index])[lmax], 'darkgoldenrod')
             plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of the signal
             
             ax.set_title(abs_df.columns[muscle_index])
@@ -398,8 +437,8 @@ def plot_envelope_signal(sub, df, action, muscle='all'):
         ax = env_fig.add_subplot(111)
         abs_df = remove_mean_offset(muscle_prmpt, abs_df, get_avg_value(muscle_prmpt, abs_df, 0, TIME_UNTIL_MOVEMENT))
         max_amplitude = signal_max_amplitude(abs_df, muscle_prmpt)
-
-        ax.plot(np.array(abs_df['Time']), get_signal_envelope(muscle_prmpt, abs_df), 'darkgoldenrod')
+        lmin,lmax = hl_envelopes_idx(abs_df, muscle_prmpt, dmin=ENVELOP_FILTER_LENGTH, dmax=ENVELOP_FILTER_LENGTH)
+        ax.plot(np.array(abs_df['Time'])[lmax], np.array(abs_df[muscle_prmpt])[lmax], 'darkgoldenrod')
         plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of the signal
         
         ax.set_xlabel('Time')
@@ -423,7 +462,7 @@ def main():
     semg_df = get_sEMG_data(subject, act_str)
     abs_semg_df = get_abs_sEMG_data(semg_df)
     
-    plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
+    # plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
     plot_sEMG_signal_abs(subject, abs_semg_df, act_str, muscle_str)
     plot_envelope_signal(subject, semg_df, act_str, muscle_str)
     plt.show()
