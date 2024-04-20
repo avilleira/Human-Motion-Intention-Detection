@@ -249,8 +249,15 @@ def get_signal_envelope(muscle_id, df):
 
     return convolve(env, filter, mode='same')
 
-def get_signal_spectrogram (muscle_id, df):
-    print("hola")
+
+def get_signal_spectrogram(muscle_id, df):
+    '''Get the signal spectrogram'''
+
+    data_arr = np.array(df[muscle_id])
+    freq, time, spectral_density = signal.spectrogram(data_arr, SAMPLING_FREQ)
+
+    return freq, time, spectral_density
+
     
 
 # -------------- PLOT FUNCTIONS --------------
@@ -386,6 +393,15 @@ def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
     ticker.AutoLocator()
 
 
+def plot_spectrogram(sub, df, action, muscle='all'):
+    
+    spect_fig = plt.figure(f'Spectrogram: sEMG {action} signals: {muscle} from {sub}')
+
+    if muscle != "all":
+        muscle_prmpt = 'sEMG: ' + muscle
+        ax = 
+
+
 def plot_envelope_signal(sub, df, action, muscle='all'):
     """
     Plot the result of the calculated Envelope signal in a new figure
@@ -438,6 +454,7 @@ def plot_envelope_signal(sub, df, action, muscle='all'):
         abs_df = remove_mean_offset(muscle_prmpt, abs_df, get_avg_value(muscle_prmpt, abs_df, 0, TIME_UNTIL_MOVEMENT))
         max_amplitude = signal_max_amplitude(abs_df, muscle_prmpt)
         lmin,lmax = hl_envelopes_idx(abs_df, muscle_prmpt, dmin=ENVELOP_FILTER_LENGTH, dmax=ENVELOP_FILTER_LENGTH)
+        
         ax.plot(np.array(abs_df['Time'])[lmax], np.array(abs_df[muscle_prmpt])[lmax], 'darkgoldenrod')
         plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of the signal
         
@@ -465,6 +482,7 @@ def main():
     # plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
     plot_sEMG_signal_abs(subject, abs_semg_df, act_str, muscle_str)
     plot_envelope_signal(subject, semg_df, act_str, muscle_str)
+
     plt.show()
 
 
