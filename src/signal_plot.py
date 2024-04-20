@@ -254,6 +254,7 @@ def get_signal_spectrogram(muscle_id, df):
     '''Get the signal spectrogram'''
 
     data_arr = np.array(df[muscle_id])
+    print("HOLA QUE TAL " , df[muscle_id].values)
     freq, time, spectral_density = signal.spectrogram(data_arr, SAMPLING_FREQ)
 
     return freq, time, spectral_density
@@ -399,7 +400,11 @@ def plot_spectrogram(sub, df, action, muscle='all'):
 
     if muscle != "all":
         muscle_prmpt = 'sEMG: ' + muscle
-        ax = 
+        ax = spect_fig.add_subplot(111)
+        
+        freq, times, amp_density = get_signal_spectrogram(muscle_prmpt, df)
+        ax.pcolormesh(times, freq, 10 * np.log10(amp_density))
+
 
 
 def plot_envelope_signal(sub, df, action, muscle='all'):
@@ -482,6 +487,8 @@ def main():
     # plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
     plot_sEMG_signal_abs(subject, abs_semg_df, act_str, muscle_str)
     plot_envelope_signal(subject, semg_df, act_str, muscle_str)
+    if muscle_str != 'all':
+        plot_spectrogram(subject, semg_df, act_str, muscle_str)
 
     plt.show()
 
