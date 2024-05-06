@@ -14,17 +14,20 @@ EXIT_FAILURE = 1
 ARGS_N = 4
 DATASET_PATH = '../../dataset/SIAT_LLMD20230404'
 TIME_UNTIL_MOVEMENT = 3 #seconds
+MUSCLES_N = 9
+
 ENVELOP_FILTER_LENGTH = 100
 PLT_AMPLITUDE_OFFSET = 0.02
-SAMPLING_FREQ = 1926
+FREQ_SAMPLING = 1920
 
 NOTCH_QUALITY_FACTOR = 100
 NOTCH_FREQ_TO_REMOVE = 50
 
-class sEMG_Signal:
+BUTTER_LOW_FREQ = 15 #Hz
+BUTTER_HIGH_FREQ = 400 #Hz
+BUTTER_ORDER = 7
 
-    def __init__(self, signal_df):
-        print("HOLA")
+
 
 def usage():
     """
@@ -50,9 +53,6 @@ def add_column_to_df(df, column_name, np_arr):
     # Checking that data received are correct
     if type(np_arr) is not np.ndarray:
         sys.stderr.write(f"Error: np_array is not a numpy array, can not be stored\n")
-        sys.exit(EXIT_FAILURE)
-    if column_name in df:
-        sys.stderr.write(f"Error: trying to add a column name already existing\n")
         sys.exit(EXIT_FAILURE)
     
     # Adding new column
@@ -144,7 +144,6 @@ def signal_max_amplitude(df, muscle_id):
     return amplitude
 
 
-
 def get_avg_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
     """
     Returns the mean value of the absolute signal from the init time to the end time 
@@ -216,7 +215,6 @@ def remove_mean_offset(muscle_id, df, avg):
     :type: double
     :return: The dataframe without the offset
     :rtype: Pandas dataframe
-
     """
 
     filtered_df = df.copy()
@@ -260,7 +258,7 @@ def hl_envelopes_idx(df, muscle_id, dmin=1, dmax=1, split=False):
 
 def get_signal_envelope(muscle_id, df):
     """
-    Calculates the signal envelope using the hilbert transform
+    Calculates the signal envelope using the hilbert tsransform
     :param muscle_id: Muscle where the signal is recorded
     :type: string
     :param df: Absolute values dataframe. If it is negative, it returns an error and exit
@@ -277,42 +275,100 @@ def get_signal_envelope(muscle_id, df):
     return convolve(env, filter, mode='same')
 
 
-def get_signal_spectrogram(muscle_id, df, arr):
-    ''' 
+def get_signal_spectrogram(signal_arr):
+    """ 
     Get the signal spectrogram.
     # Parameters:
-    :param muscle_id: Muscle where the signal is recorded
-    :type: string
-    :param df: sEMG values dataframe
-    :type: Pandas Dataframe
-    '''
+    :param signal_arr: Values of the determined signal
+    """
 
-    data_arr = df[muscle_id].values
-    freq, time, spectral_density = signal.spectrogram(data_arr, SAMPLING_FREQ)
+    freq, time, spectral_density = signal.spectrogram(signal_arr, FREQ_SAMPLING)
 
     return freq, time, spectral_density
 
 
-def get_notch_filtered_signal(df, muscle_id, arr, freq_to_remove, quality_factor, fs):
+# -------------- FILTERS --------------
 
-    #print("DFMUSCLE", df[muscle_id])
-    signal_data = arr
+
+def get_notch_filtered_signal(signal_arr, freq_to_remove, quality_factor, fs):
+
+    signal_data = signal_arr
 
     # Calculating harmonics in a array
     harmonics = np.array([freq_to_remove * i for i in range(1, fs // freq_to_remove)]) # Comprehension list
-    i = 0
+
     for fi in harmonics:
         # Notch filter: iirnotch returns num y denum of the IIR filter. The frequency to remove should be normalized
         num, denum = signal.iirnotch(fi/(fs/2), quality_factor, fs)
 
         #Aplying filter, applying it backwards and forwards
         filtered_signal = signal.filtfilt(num, denum, signal_data)
-        signal_data = filtered_signal
+
+    return filtered_signal
+
+
+def get_butterworth_filtered_signal(signal_arr, type='bandpass', cut_freq=np.array([BUTTER_LOW_FREQ, BUTTER_HIGH_FREQ]), fs=FREQ_SAMPLING, order=BUTTER_ORDER):
+    """
+    Get a Butterworth filter and apply to the signal in the arguments. The bandpass 
+    filter is set by default.
+    """
+
+    if not isinstance(cut_freq, np.ndarray):
+        cut_freq = np.array(cut_freq)
+    
+    # Normalizing frequency by Nyquist-Shannon Theorem
+    cut_freq = cut_freq / (fs / 2)
+    # Creating filter. It returns the num and denum of the TF
+    num, denum = signal.butter(order, cut_freq, btype=type, output='ba')
+    #Aplying filter to the signal
+    filtered_signal = signal.filtfilt(num, denum, signal_arr)
 
     return filtered_signal
 
 
 # -------------- PLOT FUNCTIONS --------------
+
+def plot_sEMG_signal(sub, df, action, muscles=['all'], filtered=False):
+    
+    fig = plt.figure('Subject: ' + sub + 'action ' + action + 'signal')
+
+    if not isinstance(muscles, np.ndarray):
+        muscles_arr = np.array(muscles)
+
+    if (muscles_arr.size >= 5 and muscles_arr.size <= MUSCLES_N) or muscles_arr[0] == 'all':
+        plt_index = 521 # This index is 5 rows, 2 cols and starting with the figure 1
+
+        if muscles_arr[0] == 'all':
+            print("SOY ALL")
+            muscles_arr = df.columns
+    else:
+        plt_index = muscles_arr.size*100 + 11
+
+    for i in range(len(muscles_arr)):
+        if filtered == True:
+            muscles_arr[i] = 'Filtered sEMG: ' + muscles_arr[i]
+        else:
+            muscles_arr[i] = 'sEMG: ' + muscles_arr[i]
+    
+    for muscle in muscles_arr:
+        ax = fig.add_subplot(plt_index)
+
+        ax.plot(np.array(df['Time']), np.array(df[muscle]), alpha=0.5, color='coral')
+        ax.set_title(df.columns[muscle])
+        ax.set_ylim(0, get_y_label_scale(df))
+
+        ax.set_xlabel('Time [sec]')
+        ax.set_ylabel('Value')
+
+        # Putting the tickers
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+        plt_index += 1
+
+    fig.tight_layout(h_pad=0)
+    fig.subplots_adjust(hspace=0.7)
+
 
 def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
     """
@@ -329,9 +385,9 @@ def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
 
     fig = plt.figure('sEMG ' + action + ' signals: ' + muscle + ' from ' + sub)
 
-    if muscle == "all":
+    if muscle == 'all':
         # New sub-figure is created, it represents all the sEMG signals
-        plt_index = 521 # This index is 3 rows, three rows and starting with the figure 1
+        plt_index = 521 # This index is 5 rows, 2 cols and starting with the figure 1
         muscle_index = 1 # It starts in 1 because the 0 is Time
         char_n = df.shape[1] - 1 # Eliminates time
 
@@ -339,8 +395,8 @@ def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
             ax = fig.add_subplot(plt_index)
             ax.plot(np.array(df['Time']), np.array(df.iloc[:, muscle_index]), alpha= 0.5)
             #Printing notch filtered signal
-            ax.plot(df['Time'].values, get_notch_filtered_signal(df, df.columns[muscle_index], df[df.columns[muscle_index]],
-                NOTCH_FREQ_TO_REMOVE, NOTCH_QUALITY_FACTOR, SAMPLING_FREQ), color='coral')
+            ax.plot(df['Time'].values, get_notch_filtered_signal(df[df.columns[muscle_index]].values,
+                NOTCH_FREQ_TO_REMOVE, NOTCH_QUALITY_FACTOR, FREQ_SAMPLING), color='coral')
             
             ax.set_title(df.columns[muscle_index])
             ax.set_ylim(-get_y_label_scale(df), get_y_label_scale(df))
@@ -362,8 +418,8 @@ def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
         ax = fig.add_subplot(111)
 
         ax.plot(np.array(df['Time']), np.array(df[muscle_prmpt]), alpha=0.45)
-        ax.plot(df['Time'].values, get_notch_filtered_signal(df, muscle_prmpt, df[muscle_prmpt].values,
-                NOTCH_FREQ_TO_REMOVE, NOTCH_QUALITY_FACTOR, SAMPLING_FREQ), color='coral')
+        ax.plot(df['Time'].values, get_notch_filtered_signal(df[muscle_prmpt],
+                NOTCH_FREQ_TO_REMOVE, NOTCH_QUALITY_FACTOR, FREQ_SAMPLING), color='coral')
         
         ax.set_xlabel('Time [sec]')
         ax.set_ylabel('Value')
@@ -458,8 +514,9 @@ def plot_spectrogram(sub, df, action, muscle='all'):
     if muscle != "all":
         muscle_prmpt = 'sEMG: ' + muscle
         ax = spect_fig.add_subplot(111)
-        notch = get_notch_filtered_signal(df, muscle_prmpt, df[muscle_prmpt].values, 50, 100, SAMPLING_FREQ)
-        freq, times, amp_density = get_signal_spectrogram(muscle_prmpt, df, notch)
+        notch = get_notch_filtered_signal(df[muscle_prmpt], NOTCH_FREQ_TO_REMOVE, NOTCH_QUALITY_FACTOR, FREQ_SAMPLING)
+        freq, times, amp_density = get_signal_spectrogram(notch)
+
         ax.pcolormesh(times, freq, 10 * np.log10(amp_density))
         ax.set_xlabel('Time [sec]')
         ax.set_ylabel('Frquency [Hz]')
@@ -530,6 +587,34 @@ def plot_envelope_signal(sub, df, action, muscle='all'):
     ticker.AutoLocator()
 
 
+# -------------- ACTION MENUS --------------
+
+
+def signal_processing(df, muscle, filters_list):
+
+    muscle_signal = df[muscle].values
+    print("----FILTER ZONE----")
+    
+    # If there are no filters to do, return the original one
+    if np.size(filters_list) == 0:
+        return muscle_signal
+    
+    # If there are filters to do:
+    filtered_signal = np.copy(muscle_signal)
+
+    for filter in filters_list:
+        col_name = 'Filtered ' + muscle
+
+        if filter == 'notch':
+            filtered_signal = get_notch_filtered_signal(filtered_signal, NOTCH_FREQ_TO_REMOVE,
+                NOTCH_QUALITY_FACTOR, FREQ_SAMPLING)
+            print("Filtro Notch aplicado")
+        if filter == 'butterworth':
+            filtered_signal = get_butterworth_filtered_signal(filtered_signal, 
+                'bandpass', [BUTTER_LOW_FREQ, BUTTER_HIGH_FREQ], 1920, BUTTER_ORDER)
+            print('Filtro Butterworth aplicado')       
+    add_column_to_df(df, col_name, filtered_signal)
+
 def main():
 
     if len(sys.argv) != ARGS_N:
@@ -538,15 +623,31 @@ def main():
     subject = sys.argv[1]
     act_str = sys.argv[2]
     muscle_str = sys.argv[3]
+    print(muscle_str)
 
     semg_df = get_sEMG_data(subject, act_str)
     abs_semg_df = get_abs_sEMG_data(semg_df)
     
-    plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
-    plot_sEMG_signal_abs(subject, abs_semg_df, act_str, muscle_str)
-    plot_envelope_signal(subject, semg_df, act_str, muscle_str)
-    if muscle_str != 'all':
-        plot_spectrogram(subject, semg_df, act_str, muscle_str)
+    #plot_sEMG_signal_raw(subject, semg_df, act_str, muscle_str)
+    # 'alplot_sEMG_signal_abs(subject, abs_semg_df, act_str, muscle_str)
+    # plot_envelope_signal(subject, semg_df, act_str, muscle_str)
+    if (muscle_str == 'all'):
+        for muscle in abs_semg_df.columns:
+            if muscle == 'Time':
+                continue
+            
+            signal_processing(abs_semg_df, muscle, ['notch', 'butterworth'])
+    else:
+        muscle = 'sEMG: ' + muscle_str
+        signal_processing(abs_semg_df, muscle, ['notch', 'butterworth'])
+    print(abs_semg_df.columns)
+    # plot_sEMG_signal(subject, abs_semg_df, act_str, [muscle_str], filtered=True)
+    col_to_find = 'Filtered sEMG: ' + 'upper tibialis anterior'
+
+    if col_to_find not in abs_semg_df.columns:
+        print("NO está" + col_to_find)
+    # if muscle_str != 'all':
+        # plot_spectrogram(subject, semg_df, act_str, muscle_str)
 
     plt.show()
 
