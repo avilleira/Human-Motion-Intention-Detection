@@ -2,23 +2,25 @@ import sys
 import os
 import pandas as pd
 import numpy as np
-import argparse
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib import ticker
 from scipy import signal
-from scipy.signal import hilbert, convolve
+import glob
 
 # MACROS
 
 EXIT_FAILURE = 1
 ARGS_N = 4
-DATASET_PATH = '../../dataset/SIAT_LLMD20230404'
+DATASET_PATH = '/home/avilleira/TFG/dataset/SIAT_LLMD20230404/'
 TIME_UNTIL_MOVEMENT = 3 #seconds
 MUSCLES_N = 9
+FILTER_LIST = ['notch', 'butterworth']
 
 ENVELOP_FILTER_LENGTH = 100
-PLT_AMPLITUDE_OFFSET = 0.02
+ENVELOP_LOW_CUT_FREQ = 3.5 #Hz
+ENVELOP_HIGH_CUT_FREQ = 40
+PLT_AMPLITUDE_OFFSET = 0.05
 FREQ_SAMPLING = 1920
 
 NOTCH_QUALITY_FACTOR = 100
@@ -106,7 +108,7 @@ def get_abs_sEMG_data(df):
     return abs_df
 
 
-def get_y_label_scale(df):
+def get_y_label_scale(df, signal_type):
     """
     Return the biggest value of the signals to use it to scalate.
     :param df: Dataframe
@@ -115,8 +117,9 @@ def get_y_label_scale(df):
     :rtype: double
     """
 
-    min_val = df.drop(columns=['Time']).min().min()
-    max_val = df.drop(columns=['Time']).max().max()
+    select_columns = df.filter(regex=f'^{signal_type}', axis=1)
+    min_val = df.drop(columns=df.columns.difference(select_columns.columns)).min().min()
+    max_val = df.drop(columns=df.columns.difference(select_columns.columns)).min().min()
 
     if abs(min_val) > abs(max_val):
         return abs(min_val)
@@ -137,9 +140,9 @@ def signal_max_amplitude(df, muscle_id):
     
     amplitude = 0
 
-    for value in df[muscle_id]:
-        if amplitude < abs(value):
-            amplitude = abs(value)
+    for value in df[muscle_id].values:
+        if amplitude < value:
+            amplitude = value
 
     return amplitude
 
@@ -188,9 +191,9 @@ def get_max_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
     signal_arr = np.array(df[muscle_id])
 
     # Check if it is the absolute signal. 
-    if np.any(signal_arr < 0):
+    """if np.any(signal_arr < 0):
         sys.stderr.write("Max value error: The signal values are not all positive.\n")
-        sys.exit(EXIT_FAILURE)
+        sys.exit(EXIT_FAILURE)"""
 
     if init_time < 0 or end_time < 0 or end_time >= time_arr[-1]:
         return signal_max_amplitude(df, muscle_id)
@@ -221,56 +224,6 @@ def remove_mean_offset(signal_arr, avg):
     return signal_arr
 
 
-def hl_envelopes_idx(df, muscle_id, dmin=1, dmax=1, split=False):
-    """
-    Input :
-    s: 1d-array, data signal from which to extract high and low envelopes
-    dmin, dmax: int, optional, size of chunks, use this if the size of the input signal is too big
-    split: bool, optional, if True, split the signal in half along its mean, might help to generate the envelope in some cases
-    Output :
-    lmin,lmax : high/low envelope idx of input signal s
-    """
-    s = np.array(df[muscle_id])
-    # locals min      
-    lmin = (np.diff(np.sign(np.diff(s))) > 0).nonzero()[0] + 1 
-    # locals max
-    lmax = (np.diff(np.sign(np.diff(s))) < 0).nonzero()[0] + 1 
-    
-    if split:
-        # s_mid is zero if s centered around x-axis or more generally mean of signal
-        s_mid = np.mean(s) 
-        # pre-sorting of locals min based on relative position with respect to s_mid 
-        lmin = lmin[s[lmin]<s_mid]
-        # pre-sorting of local max based on relative position with respect to s_mid 
-        lmax = lmax[s[lmax]>s_mid]
-
-    # global min of dmin-chunks of locals min 
-    lmin = lmin[[i+np.argmin(s[lmin[i:i+dmin]]) for i in range(0,len(lmin),dmin)]]
-    # global max of dmax-chunks of locals max 
-    lmax = lmax[[i+np.argmax(s[lmax[i:i+dmax]]) for i in range(0,len(lmax),dmax)]]
-    
-    return lmin,lmax
-
-
-def get_signal_envelope(muscle_id, df):
-    """
-    Calculates the signal envelope using the hilbert tsransform
-    :param muscle_id: Muscle where the signal is recorded
-    :type: string
-    :param df: Absolute values dataframe. If it is negative, it returns an error and exit
-    :type: Pandas Dataframe
-    :return: The signal envelope
-    :rtype: Pandas dataframe
-    """
-
-    # Transform data to only using real part
-    env = np.real(hilbert(np.array(df[muscle_id])))
-    # Applying the length filter
-    filter = np.ones(ENVELOP_FILTER_LENGTH) / ENVELOP_FILTER_LENGTH
-
-    return convolve(env, filter, mode='same')
-
-
 def get_signal_spectrogram(signal_arr):
     """ 
     Get the signal spectrogram.
@@ -283,8 +236,35 @@ def get_signal_spectrogram(signal_arr):
     return freq, time, spectral_density
 
 
-# -------------- FILTERS --------------
+def get_max_contraction_value(sub, muscle):
+    
+    max_contraction = 0
+    file_name = sub + '_*_Data.csv'
+    data_path = os.path.join(DATASET_PATH, sub, 'Data', file_name)
 
+    for file in glob.glob(data_path):
+        signal_data = pd.read_csv(file)
+
+        # Selecting the sEMG data and the time stamp
+        time_df = signal_data.iloc[:, 0:1]
+        semg_df = signal_data.filter(regex='^sEMG: ')
+
+        # Creating bounded Dataframe. It concatenates in the cols axis
+        data_df = pd.concat([time_df, semg_df], axis=1)
+
+        signal_processing(data_df, muscle, FILTER_LIST)
+        signal_envelope(data_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
+        
+        muscle_id = 'Envelope ' + muscle 
+        max_val = get_max_value(muscle_id, data_df)
+    
+        if (max_val > max_contraction):
+            max_contraction = max_val
+    
+    return max_contraction
+
+
+# -------------- FILTERS --------------
 
 def get_notch_filtered_signal(signal_arr, freq_to_remove, quality_factor, fs):
 
@@ -318,15 +298,57 @@ def get_butterworth_filtered_signal(signal_arr, type='bandpass', cut_freq=np.arr
     num, denum = signal.butter(order, cut_freq, btype=type, output='ba')
     #Aplying filter to the signal and rectifying
     filtered_signal = signal.filtfilt(num, denum, signal_arr)
-    filtered_signal = np.abs(filtered_signal)
+    #filtered_signal = np.abs(filtered_signal)
 
     return filtered_signal
 
 
+def normalize_data(sub, df, muscle, filtered=False, envelope=False):
+    """
+    Normalizing signal data using the max contraction value of the muscle.
+    :param sub: Name of the subject whose data comes from
+    :type: string
+    :param df: Dataframe of the signal data
+    :type: pd.Dataframe
+    :param muscle: Muscle name whose signal is processed
+    :type: string
+    :param filtered: Indicates if the signal was filtered or not
+    :type: Bool
+    :param envelope: Indicates if the envelope signal wants to be plotted
+    :type: Bool 
+    """
+    # Get maximum contraction value of the muscle:
+    max_contraction = get_max_contraction_value(sub, muscle)
+    # Column names:
+    if envelope == True:
+        muscle = 'Envelope ' + muscle
+    elif filtered == True:
+        muscle = 'Filtered ' + muscle
+    # Normalizing
+    df[muscle] = df[muscle] / max_contraction
+        
 # -------------- PLOT FUNCTIONS --------------
 
 def plot_sEMG_signal(sub, df, action, muscles=['all'], filtered=False, envelope=False):
+    """
+    Plot a muscle signal, depending if it is filtered or not,
+    or the envelope is wanted to be plotted.
+    # Parameters:
+    :param sub: Name of the subject whose data comes from
+    :type: string
+    :param df: Dataframe of the signal data
+    :type: pd.Dataframe
+    :param action: Movement the subject is doing
+    :type: string
+    :param muscle: Muscles where the signals are recorded
+    :type: string list
+    :param filtered: Indicates if the signal was filtered or not
+    :type: Bool
+    :param envelope: Indicates if the envelope signal wants to be plotted
+    :type: Bool 
+    """
 
+    # Creating figure
     fig = plt.figure('Subject: ' + sub + ' action ' + action + ' signal')
 
     if (len(muscles) > 5 and len(muscles) <= MUSCLES_N) or muscles[0] == 'all':
@@ -337,7 +359,6 @@ def plot_sEMG_signal(sub, df, action, muscles=['all'], filtered=False, envelope=
 
     # If not represents all muscles
     if muscles[0] != 'all':
-        print("NO SOY ALL")
         for i in range(len(muscles)):
             if envelope == True:
                 muscles[i] = "Envelope sEMG: " + muscles[i]
@@ -360,16 +381,15 @@ def plot_sEMG_signal(sub, df, action, muscles=['all'], filtered=False, envelope=
     for muscle in muscles:
         ax = fig.add_subplot(plt_index)
         
-        if envelope == True:
+        if envelope == True: # If the envelope wants to be plotted
             ax.plot(np.array(df['Time']), np.array(df[muscle]), color='coral')
-            #ax.set_ylim(0, get_y_label_scale(df))
+            ax.set_ylim(-PLT_AMPLITUDE_OFFSET, 1)
         elif filtered == True:
             ax.plot(np.array(df['Time']), np.array(df[muscle]), color='darkgreen')
-            ax.set_ylim(0, get_y_label_scale(df))
-        
+            ax.set_ylim(-PLT_AMPLITUDE_OFFSET, 1)
         else:
             ax.plot(np.array(df['Time']), np.array(df[muscle]))
-            ax.set_ylim(0, get_y_label_scale(df))
+            ax.set_ylim(-PLT_AMPLITUDE_OFFSET, 1)
 
         ax.set_title(muscle)
         ax.set_xlabel('Time [sec]')
@@ -383,6 +403,7 @@ def plot_sEMG_signal(sub, df, action, muscles=['all'], filtered=False, envelope=
 
     fig.tight_layout(h_pad=0)
     fig.subplots_adjust(hspace=0.7)
+    ticker.AutoLocator()
 
 
 def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
@@ -445,83 +466,6 @@ def plot_sEMG_signal_raw(sub, df, action, muscle='all'):
     ticker.AutoLocator()
 
 
-def plot_sEMG_signal_abs(sub, df, action, muscle='all'):
-    """
-    Plot the absolute values signal figures using matplotlib library.
-    :param sub: Name of the subject whose data comes from
-    :type: string
-    :param df: Dataframe of the absolute signal data
-    :type: pd.Dataframe
-    :param action: Movement the subject is doing
-    :type: string
-    :param muscle: Muscle where the signal is recorded
-    :type: string
-    """
-
-    fig = plt.figure('ABS. sEMG ' + action + ' signals: ' + muscle + ' from ' + sub)
-
-    if muscle == 'all':
-        # New sub-figure is created, it represents all the sEMG signals
-        plt_index = 521 # This index is 9 rows, 1 column and starting to edit in subplot 1
-        muscle_index = 1 # It starts in 1 because the 0 is Time
-        char_n = df.shape[1] - 1 # Eliminates time
-
-        for _ in range(char_n):
-            ax = fig.add_subplot(plt_index)
-            # This line removes offset in the minimum values:
-            df = remove_mean_offset(df.columns[muscle_index], df, get_avg_value(df.columns[muscle_index], df, 0, TIME_UNTIL_MOVEMENT))
-            max_amplitude = signal_max_amplitude(df, df.columns[muscle_index])
-            
-            ax.plot(np.array(df['Time']), np.array(df.iloc[:, muscle_index]), color='darkolivegreen')
-            plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of every signal
-            
-            ax.set_title(df.columns[muscle_index])
-            ax.set_xlabel('Time [sec]')
-            ax.set_ylabel('Value (Absolute)')
-            ax.set_ylim(0, get_y_label_scale(df) + PLT_AMPLITUDE_OFFSET) # We add a little offset to see the max amplitude inside the figure
-            # Putting the tickers
-            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-            ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-
-            # Print the results
-            print(f'Maximum amplitude of the {df.columns[muscle_index]} data: {max_amplitude}')
-            print(f'Avg value of the first 3 seconds: {get_avg_value(df.columns[muscle_index], df, 0, TIME_UNTIL_MOVEMENT)}')
-            print(f'MAX value of the first 3 seconds of the sEMG: {muscle} data: {get_max_value(df.columns[muscle_index], df, 0, TIME_UNTIL_MOVEMENT)}')
-
-            plt_index += 1
-            muscle_index += 1
-        
-        fig.tight_layout(h_pad=0)
-        fig.subplots_adjust(hspace=0.7)
-        
-        
-    else:
-        muscle_prmpt = 'sEMG: ' + muscle
-        ax = fig.add_subplot(111)
-        df = remove_mean_offset(muscle_prmpt, df, get_avg_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT))
-        max_amplitude = signal_max_amplitude(df, muscle_prmpt)
-
-        ax.plot(abs(np.array(df['Time'])), abs(np.array(df[muscle_prmpt])), color='darkolivegreen')
-        plt.axhline(y=max_amplitude, color='r', linestyle='--') # Print the amplitude of the signal
-        
-        ax.set_xlabel('Time [sec]')
-        ax.set_ylabel('Value (Absolute)') 
-        # Putting the tickers
-        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-        # Print the results
-        print(f'MAX value of the sEMG: {muscle} data: {max_amplitude}')
-        print(f'Avg value of the first 3 seconds: {get_avg_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT)}')
-        print(f'MAX value of the first 3 seconds of the sEMG: {muscle} data: {get_max_value(muscle_prmpt, df, 0, TIME_UNTIL_MOVEMENT)}')
-
-    #Creating the legend:
-    custom_legend = [
-        Line2D([0], [0], color='r', linestyle='--', label='Max. Amplitude')
-    ]
-    fig.legend(handles=custom_legend, loc='lower right')
-    ticker.AutoLocator()
-
-
 def plot_spectrogram(sub, df, action, muscle='all'):
     
     spect_fig = plt.figure(f'Spectrogram: sEMG {action} signals: {muscle} from {sub}')
@@ -529,8 +473,10 @@ def plot_spectrogram(sub, df, action, muscle='all'):
     if muscle != "all":
         muscle_prmpt = 'sEMG: ' + muscle
         ax = spect_fig.add_subplot(111)
+
         notch = get_notch_filtered_signal(df[muscle_prmpt], NOTCH_FREQ_TO_REMOVE, NOTCH_QUALITY_FACTOR, FREQ_SAMPLING)
-        freq, times, amp_density = get_signal_spectrogram(notch)
+        filtered_signal = get_butterworth_filtered_signal(notch, 'bandpass', [BUTTER_LOW_FREQ, BUTTER_HIGH_FREQ], FREQ_SAMPLING, BUTTER_ORDER)
+        freq, times, amp_density = get_signal_spectrogram(filtered_signal)
 
         ax.pcolormesh(times, freq, 10 * np.log10(amp_density))
         ax.set_xlabel('Time [sec]')
@@ -539,10 +485,20 @@ def plot_spectrogram(sub, df, action, muscle='all'):
 
 # -------------- ACTION MENUS --------------
 
-
 def signal_processing(df, muscle, filters_list):
+    """
+    Executes all the filtering and processing things that are needed to be done.
+    # Parameters:
+    :param df: Dataframe of the signal data
+    :type: pd.Dataframe
+    :param muscle: Muscle name whose signal is processed
+    :type: string
+    :param filters_list: List of all the filters are made in the process
+    :type: string List
+    """
     print("----FILTER ZONE----")
     print("MUSCLE:", muscle)
+
     muscle_signal = df[muscle].values
     
     # If there are no filters to do, return the original one
@@ -566,11 +522,21 @@ def signal_processing(df, muscle, filters_list):
         if filter == 'butterworth':
             filtered_signal = get_butterworth_filtered_signal(filtered_signal, 
                 'bandpass', [BUTTER_LOW_FREQ, BUTTER_HIGH_FREQ], 1920, BUTTER_ORDER)
+            print("Filtro Butterworth paso banda aplicado")
 
     add_column_to_df(df, col_name, filtered_signal)
 
 
-def signal_envelope(df, muscle, low_cut_freq=BUTTER_LOW_FREQ, fs=FREQ_SAMPLING, order=BUTTER_ORDER):
+def signal_envelope(df, muscle, high_cut_freq=ENVELOP_HIGH_CUT_FREQ, low_cut_freq=ENVELOP_LOW_CUT_FREQ, fs=FREQ_SAMPLING, order=BUTTER_ORDER):
+    '''
+    Process the sEMG signal to obtain the envelop of it.
+    # Arguments
+    :param df: Dataframe of the muscle signal
+    :param muscle:
+    :param low_cut_freq:
+    :param fs:
+    :param order:
+    '''
     print("----ENVELOPE ZONE----")
 
     filtered_name = 'Filtered ' + muscle
@@ -578,14 +544,22 @@ def signal_envelope(df, muscle, low_cut_freq=BUTTER_LOW_FREQ, fs=FREQ_SAMPLING, 
 
     # Normalizing frequency by Nyquist-Shannon Theorem
     low_cut_freq = low_cut_freq / (fs / 2)
-    # Butterworth filter and rectifying
-    num,denum = signal.butter(order, low_cut_freq, btype='low', output='ba')
+    high_cut_freq = high_cut_freq / (fs / 2)
+
+    # Butterworth high filter
+    num,denum = signal.butter(order, high_cut_freq, btype='high', output='ba') # A low pass filter
     env_signal = signal.filtfilt(num, denum, f_signal)
+    #Rectifying
     env_signal = np.abs(env_signal)
+    # Butterworth high filter
+    num,denum = signal.butter(order, low_cut_freq, btype='low', output='ba') # A low pass filter
+    env_signal = signal.filtfilt(num, denum, env_signal)
 
     envelope_name = 'Envelope ' + muscle
 
     add_column_to_df(df, envelope_name, env_signal)
+
+    print("Envolvente creada")
 
 
 def main():
@@ -597,29 +571,27 @@ def main():
     muscle_str = sys.argv[3]
 
     semg_df = get_sEMG_data(subject, act_str)
-    #abs_semg_df = get_abs_sEMG_data(semg_df)
 
-    
-    # plot_envelope_signal(subject, semg_df, act_str, muscle_str)
     if (muscle_str == 'all'):
         for muscle in semg_df.columns:
             if muscle == 'Time':
                 continue
-            signal_processing(semg_df, muscle, [ 'notch', 'butterworth', 'mean_off'])
-            signal_envelope(semg_df, muscle, 3, FREQ_SAMPLING, BUTTER_ORDER)
+            signal_processing(semg_df, muscle, FILTER_LIST)
+            signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
+            normalize_data(subject, semg_df, muscle, True, True)
+
+
     else:
         muscle = 'sEMG: ' + muscle_str
-        signal_processing(semg_df, muscle, ['notch', 'butterworth', 'mean_off'])
-        signal_envelope(semg_df, muscle, 3.5, FREQ_SAMPLING, BUTTER_ORDER)
+        signal_processing(semg_df, muscle, FILTER_LIST)
+        signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
+        normalize_data(subject, semg_df, muscle, True, True)
 
-
-    #plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], filtered=True)
-    print("PLOTEANDO ENVOLVENTE")
+    if muscle_str != 'all':
+        plot_spectrogram(subject, semg_df, act_str, muscle_str)
+    
     plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], filtered=True, envelope=True)
-
-
-    # if muscle_str != 'all':
-        # plot_spectrogram(subject, semg_df, act_str, muscle_str)
+    
 
     plt.show()
 
