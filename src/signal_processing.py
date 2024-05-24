@@ -7,6 +7,7 @@ from matplotlib.lines import Line2D
 from matplotlib import ticker
 from scipy import signal
 import glob
+import pywt
 
 # MACROS
 
@@ -17,11 +18,12 @@ TIME_UNTIL_MOVEMENT = 3 #seconds
 MUSCLES_N = 9
 FILTER_LIST = ['notch', 'butterworth']
 
+PLT_AMPLITUDE_OFFSET = 0.05
+FREQ_SAMPLING = 1920
+
 ENVELOP_FILTER_LENGTH = 100
 ENVELOP_LOW_CUT_FREQ = 3.5 #Hz
 ENVELOP_HIGH_CUT_FREQ = 40
-PLT_AMPLITUDE_OFFSET = 0.05
-FREQ_SAMPLING = 1920
 
 NOTCH_QUALITY_FACTOR = 100
 NOTCH_FREQ_TO_REMOVE = 50
@@ -29,6 +31,11 @@ NOTCH_FREQ_TO_REMOVE = 50
 BUTTER_LOW_FREQ = 15 #Hz
 BUTTER_HIGH_FREQ = 400 #Hz
 BUTTER_ORDER = 7
+
+WVLT_THRESHOLD = 0.08
+WVLT_THRHLD_MODE = "soft"
+WVLT_PACKET_TYPE = 'db7'
+WVLT_LEVEL = 9
 
 
 def usage():
@@ -326,6 +333,14 @@ def normalize_data(sub, df, muscle, filtered=False, envelope=False):
         muscle = 'Filtered ' + muscle
     # Normalizing
     df[muscle] = df[muscle] / max_contraction
+
+
+def wavelet_packet(signal_data, threshold=WVLT_THRESHOLD, mode=WVLT_THRHLD_MODE, type=WVLT_PACKET_TYPE, level=WVLT_LEVEL):
+
+    filtered_signal = np.empty_like(signal_data)
+    #Discrete Wavelet Transform 
+    coeffs = pywt.wavedec(signal_data, type, level=level)
+
         
 # -------------- PLOT FUNCTIONS --------------
 
@@ -522,7 +537,11 @@ def signal_processing(df, muscle, filters_list):
         if filter == 'butterworth':
             filtered_signal = get_butterworth_filtered_signal(filtered_signal, 
                 'bandpass', [BUTTER_LOW_FREQ, BUTTER_HIGH_FREQ], 1920, BUTTER_ORDER)
+            wavelet_packet(filtered_signal)
             print("Filtro Butterworth paso banda aplicado")
+        
+        if filter == 'wavelet':
+            filtered_signal = wavelet_packet(filtered_signal)
 
     add_column_to_df(df, col_name, filtered_signal)
 
@@ -584,15 +603,14 @@ def main():
     else:
         muscle = 'sEMG: ' + muscle_str
         signal_processing(semg_df, muscle, FILTER_LIST)
-        signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
-        normalize_data(subject, semg_df, muscle, True, True)
+        #signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
+        # normalize_data(subject, semg_df, muscle, True, True)
 
     if muscle_str != 'all':
         plot_spectrogram(subject, semg_df, act_str, muscle_str)
     
-    plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], filtered=True, envelope=True)
+    #plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], filtered=True, envelope=True)
     
-
     plt.show()
 
 
