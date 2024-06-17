@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib import ticker
 from scipy import signal
+from scipy import integrate
 import pywt
 
 # MACROS
@@ -13,9 +14,11 @@ import pywt
 EXIT_FAILURE = 1
 ARGS_N = 4
 DATASET_PATH = '/home/avilleira/TFG/dataset/SIAT_LLMD20230404/'
+NORMS_PARAM_FILE = '/home/avilleira/TFG/tfg/data/normalization_params.csv'
 TIME_UNTIL_MOVEMENT = 3 #seconds
 MUSCLES_N = 9
 FILTER_LIST = ['notch', 'butterworth', 'wavelet']
+DU_SET_LIST = ['iemg']
 
 PLT_AMPLITUDE_OFFSET = 0.05
 FREQ_SAMPLING = 1920
@@ -36,13 +39,16 @@ WVLT_THRHLD_MODE = "soft"
 WVLT_PACKET_TYPE = 'db8'
 WVLT_LEVEL = 9
 
+SEMG_WINDOW_SIZE = 120
+WAK_WINDOW_SIZE = 80
+
 
 def usage():
     """
     Usage error exit
     """
 
-    sys.stderr.write("Usage: python3 signal_plot.py SubXX action muscle/all\n")
+    sys.stderr.write("Usage: python3 signal_processing.py SubXX ACTION MUSCLE/ALL\n")
     sys.exit(EXIT_FAILURE)
 
 
@@ -71,7 +77,7 @@ def get_sEMG_data(subject, action_str):
     """
     This function returns the bounded Dataframe with the sEMG data and the time
     stamp of all the data points.
-
+    # Parameters
     :param subject: Name of the subject whose data comes from
     :type: string
     :param action_str: Action that the subject is doing
@@ -99,6 +105,7 @@ def get_sEMG_data(subject, action_str):
 def get_abs_sEMG_data(df):
     """
     Creates a new dataframe with the absolute values of the different muscles
+    # Parameters:
     :param df: Dataframe of the sEMG signals
     :type: pd.Dataframe
     :return: The absolute values dataframe
@@ -106,7 +113,6 @@ def get_abs_sEMG_data(df):
     """
     
     abs_df = df.copy()
-
     for col in abs_df.columns:
         if col != 'Time':
             abs_df[col] = abs_df[col].abs()
@@ -126,7 +132,7 @@ def get_y_label_scale(df, signal_type):
     select_columns = df.filter(regex=f'^{signal_type}', axis=1)
     min_val = df.drop(columns=df.columns.difference(select_columns.columns)).min().min()
     max_val = df.drop(columns=df.columns.difference(select_columns.columns)).max().max()
-    print(min_val, max_val)
+
     return max_val, min_val
 
 
@@ -193,11 +199,6 @@ def get_max_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
     time_arr = np.array(df['Time'])
     signal_arr = np.array(df[muscle_id])
 
-    # Check if it is the absolute signal. 
-    """if np.any(signal_arr < 0):
-        sys.stderr.write("Max value error: The signal values are not all positive.\n")
-        sys.exit(EXIT_FAILURE)"""
-
     if init_time < 0 or end_time < 0 or end_time >= time_arr[-1]:
         return signal_max_amplitude(df, muscle_id)
     else:
@@ -235,12 +236,12 @@ def get_signal_spectrogram(signal_arr):
     """
 
     freq, time, spectral_density = signal.spectrogram(signal_arr, FREQ_SAMPLING)
-
     return freq, time, spectral_density
 
 
 def get_max_wak_contraction_value(sub, muscle):
     """
+    
     """
     
     max_contraction = 0
@@ -306,6 +307,9 @@ def get_butterworth_filtered_signal(signal_arr, type='bandpass', cut_freq=np.arr
 
 
 def get_wavelet_filtered_signal(signal_data, threshold=WVLT_THRESHOLD, mode=WVLT_THRHLD_MODE, wvlt_type=WVLT_PACKET_TYPE, level=WVLT_LEVEL):
+    """
+    Obtain the Wavelet transform of the signal and apply it to the signal.
+    """
 
     #Discrete Wavelet Transform 
     coeffs = pywt.wavedec(signal_data, wvlt_type, level=level)
@@ -325,6 +329,7 @@ def get_wavelet_filtered_signal(signal_data, threshold=WVLT_THRESHOLD, mode=WVLT
 def normalize_data(sub, df, muscle, filtered=False, envelope=False):
     """
     Normalizing signal data using the max contraction value of the muscle.
+    #Parameters
     :param sub: Name of the subject whose data comes from
     :type: string
     :param df: Dataframe of the signal data
@@ -337,15 +342,16 @@ def normalize_data(sub, df, muscle, filtered=False, envelope=False):
     :type: Bool 
     """
     # Get maximum wak contraction value of the muscle:
-    max_contraction = get_max_wak_contraction_value(sub, muscle)
+    max_values = pd.read_csv(NORMS_PARAM_FILE, index_col=0)
     # Column names:
     if envelope == True:
         muscle = 'Envelope ' + muscle
     elif filtered == True:
         muscle = 'Filtered ' + muscle
+    
+    max_contraction = max_values.loc[sub, muscle]
     # Normalizing
     df[muscle] = df[muscle] / max_contraction
-
         
 # -------------- PLOT FUNCTIONS --------------
 
@@ -500,7 +506,7 @@ def signal_processing(df, muscle, filters_list):
 def signal_envelope(df, muscle, high_cut_freq=ENVELOP_HIGH_CUT_FREQ, low_cut_freq=ENVELOP_LOW_CUT_FREQ, fs=FREQ_SAMPLING, order=BUTTER_ORDER):
     '''
     Process the sEMG signal to obtain the envelop of it.
-    # Arguments
+    # Parameters
     :param df: Dataframe of the muscle signal
     :param muscle:
     :param low_cut_freq:
@@ -532,6 +538,44 @@ def signal_envelope(df, muscle, high_cut_freq=ENVELOP_HIGH_CUT_FREQ, low_cut_fre
     print("Envolvente creada")
 
 
+# =========================== DATA ANALYSIS ===========================
+def window_sliding(muscle, df, action):
+    """
+    Sliding Window to get the data easily
+    """
+
+    # Selecting number of windows
+    if (action == "WAK"):
+        window_size = WAK_WINDOW_SIZE
+    else:
+        window_size =SEMG_WINDOW_SIZE
+
+    # Generating the window sliding
+    signal_arr = df[muscle].to_numpy()
+    slide_signal_arr = [signal_arr[i:i + window_size] for i in range(0, len(signal_arr), window_size)]
+
+    for idx, subarray in enumerate(slide_signal_arr):
+        print(f'Subarray {idx}: {subarray}')
+
+    return slide_signal_arr
+
+def get_Du_feature_set(muscle, df):
+
+    muscle = 'Filtered ' + muscle
+    signal_data = df[muscle].values
+
+    for feature in DU_SET_LIST:
+        if feature == 'iemg':
+            print(f"la señal integrada es {get_integrated_EMG(signal_data)}")
+
+
+def get_integrated_EMG(signal_arr):
+    abs_signal = np.abs(signal_arr)
+    iemg = integrate.simpson(abs_signal, dx=1/FREQ_SAMPLING)
+
+    return iemg
+
+
 def main():
     if len(sys.argv) != ARGS_N:
         usage()
@@ -547,18 +591,19 @@ def main():
             if muscle == 'Time':
                 continue
             signal_processing(semg_df, muscle, FILTER_LIST)
-            signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
+            # signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
             normalize_data(subject, semg_df, muscle, True)
-
+            get_Du_feature_set(muscle, semg_df)
     else:
         muscle = 'sEMG: ' + muscle_str
         signal_processing(semg_df, muscle, FILTER_LIST)
-        signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
+        # signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
         normalize_data(subject, semg_df, muscle, True)
 
     if muscle_str != 'all':
-        plot_spectrogram(subject, semg_df, act_str, muscle_str)
-    
+        # plot_spectrogram(subject, semg_df, act_str, muscle_str)
+        get_Du_feature_set(muscle, semg_df)
+        window_sliding(muscle, semg_df, act_str)
     plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], filtered=True, envelope=False)
     plt.show()
 
