@@ -9,8 +9,4 @@ Tengo que añadir todo  la anterior.
 
 La fórmula de la pendiente es:
 
-     y2 - y1
-     
-m = ---------
-
-     x2 - x1
+m = (y2 - y1) / (x2 - x1)
