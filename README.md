@@ -9,5 +9,7 @@ Tengo que añadir todo  la anterior.
 
 La fórmula de la pendiente es:
      y2 - y1
+     
 m = ---------
+
      x2 - x1
