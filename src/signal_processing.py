@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -18,7 +19,7 @@ NORMS_PARAM_FILE = '/home/avilleira/TFG/tfg/data/normalization_params.csv'
 TIME_UNTIL_MOVEMENT = 3 #seconds
 MUSCLES_N = 9
 FILTER_LIST = ['notch', 'butterworth', 'wavelet']
-DU_SET_LIST = ['iemg']
+DU_SET_LIST = ['iemg', 'variance']
 
 PLT_AMPLITUDE_OFFSET = 0.05
 FREQ_SAMPLING = 1920
@@ -39,7 +40,7 @@ WVLT_THRHLD_MODE = "soft"
 WVLT_PACKET_TYPE = 'db8'
 WVLT_LEVEL = 9
 
-SEMG_WINDOW_SIZE = 120
+SEMG_WINDOW_SIZE = 150
 WAK_WINDOW_SIZE = 80
 
 
@@ -73,6 +74,24 @@ def add_column_to_df(df, column_name, np_arr):
     df[column_name] = np_arr
 
 
+def get_dataframe(subject, action):
+    """
+    Returns a dataframe from a data file created with the arguments
+    :param subject: Name of the subject whose data comes from
+    :type: string
+    :param action: Action that the subject is doing
+    :type: string
+    :return: The dataframe
+    :rtype: pd.Dataframe
+    """
+
+    data_file = subject + '_' + action + '_Data.csv'
+    # Creating the path
+    data_path = os.path.join(DATASET_PATH, subject, 'Data', data_file)
+    # Returns the DataFrame reading from a file.
+    return pd.read_csv(data_path)
+
+
 def get_sEMG_data(subject, action_str):
     """
     This function returns the bounded Dataframe with the sEMG data and the time
@@ -86,12 +105,7 @@ def get_sEMG_data(subject, action_str):
     :rtype: pd.Dataframe
     """
 
-    data_file = subject + '_' + action_str + '_Data.csv'
-    # Creating the path
-    data_path = os.path.join(DATASET_PATH, subject, 'Data', data_file)
-    # Creating the DataFrame reading from a file.
-    signal_data = pd.read_csv(data_path)
-
+    signal_data = get_dataframe(subject, action_str)
     # Selecting the sEMG data and the time stamp
     time_df = signal_data.iloc[:, 0:1]
     semg_df = signal_data.filter(regex='^sEMG: ')
@@ -101,6 +115,27 @@ def get_sEMG_data(subject, action_str):
 
     return bounded_df
 
+
+def get_kinematic_data(subject, action_str):
+    """
+    Returns the bounded Dataframe with the kinematic angles and forces,
+    including the time stamp.
+    # Paramaters
+    :param subject: Name of the subject whose data comes from
+    :type: string
+    :param action_str: Action that the subject is doing
+    :type: string
+    :return: The bounded dataframe
+    :rtype: pd.Dataframe
+    """
+
+    signal_data = get_dataframe(subject, action_str)
+    # Selecting the kinematic data and the time stamp
+    time_df = signal_data.iloc[:, 0:1]
+    kinec_df = signal_data.filter(regex='^Kinematic: ')
+    # Creating bounded Dataframe. It concatenates in the cols axis
+    return pd.concat([time_df, kinec_df], axis=1)
+    
 
 def get_abs_sEMG_data(df):
     """
@@ -341,7 +376,8 @@ def normalize_data(sub, df, muscle, filtered=False, envelope=False):
     :param envelope: Indicates if the envelope signal wants to be plotted
     :type: Bool 
     """
-    # Get maximum wak contraction value of the muscle:
+    # Get maximum wak contraction values of the muscle:
+    # It is a dataframe
     max_values = pd.read_csv(NORMS_PARAM_FILE, index_col=0)
     # Column names:
     if envelope == True:
@@ -352,10 +388,26 @@ def normalize_data(sub, df, muscle, filtered=False, envelope=False):
     max_contraction = max_values.loc[sub, muscle]
     # Normalizing
     df[muscle] = df[muscle] / max_contraction
-        
+
+
+def get_slope(df, joint_id):
+    print(df)
+    dif_x = df['Time'].diff()
+    print(joint_id)
+    dif_y = df[joint_id].diff()
+
+    slope_str = 'Slope: ' + joint_id
+    df[slope_str] = dif_y / dif_x
+
+    df[slope_str].iloc[0] = (df[joint_id].iloc[1] - df[joint_id].iloc[0]) / (df['Time'].iloc[1] - df['Time'].iloc[0])
+    df[slope_str].iloc[-1] = (df[joint_id].iloc[-1] - df[joint_id].iloc[-2]) / (df['Time'].iloc[-1] - df['Time'].iloc[-2])
+
+    return df
+
+
 # -------------- PLOT FUNCTIONS --------------
 
-def plot_sEMG_signal(sub, df, action, muscles=['all'], filtered=False, envelope=False):
+def plot_sEMG_signal(sub, df, action, muscles=['all'], joint='', filtered=False, envelope=False, kinem_df=None):
     """
     Plot a muscle signal, depending if it is filtered or not,
     or the envelope is wanted to be plotted.
@@ -412,6 +464,11 @@ def plot_sEMG_signal(sub, df, action, muscles=['all'], filtered=False, envelope=
     if muscles[0] == 'Time':
         muscles = muscles[1:]
 
+    joint = 'Kinematic: ' + joint
+
+    joint_data = kinem_df[joint] / 180
+    kinem_df = get_slope(kinem_df, joint)
+    print(kinem_df['Slope: Kinematic: left knee flexion angle'].min())
     # Starts to plot
     for muscle in muscles:
         ax = fig.add_subplot(plt_index)
@@ -419,6 +476,8 @@ def plot_sEMG_signal(sub, df, action, muscles=['all'], filtered=False, envelope=
             ax.plot(np.array(df['Time']), np.array(df[muscle]), color='coral')
         elif filtered == True:
             ax.plot(np.array(df['Time']), np.array(df[muscle]), color='darkgreen')
+            ax.plot(np.array(df['Time']), np.array(joint_data), color='red')
+
         else:
             ax.plot(np.array(df['Time']), np.array(df[muscle]))
 
@@ -554,26 +613,41 @@ def window_sliding(muscle, df, action):
     signal_arr = df[muscle].to_numpy()
     slide_signal_arr = [signal_arr[i:i + window_size] for i in range(0, len(signal_arr), window_size)]
 
-    for idx, subarray in enumerate(slide_signal_arr):
-        print(f'Subarray {idx}: {subarray}')
-
     return slide_signal_arr
 
-def get_Du_feature_set(muscle, df):
 
-    muscle = 'Filtered ' + muscle
-    signal_data = df[muscle].values
+def get_Du_feature_set(windowed_signal_arr):
+
+    du_data = np.empty(0)
 
     for feature in DU_SET_LIST:
         if feature == 'iemg':
-            print(f"la señal integrada es {get_integrated_EMG(signal_data)}")
+            iemg = get_integrated_EMG(windowed_signal_arr)
+            np.append(du_data, iemg)
+        if feature == 'variance':
+            var = get_variance_EMG(windowed_signal_arr)
+            np.append(du_data, var)
 
 
 def get_integrated_EMG(signal_arr):
-    abs_signal = np.abs(signal_arr)
-    iemg = integrate.simpson(abs_signal, dx=1/FREQ_SAMPLING)
+    
+    iemg_arr = []
+    for window in signal_arr:
+        abs_signal = np.abs(window)
+        iemg_arr.append(integrate.simpson(abs_signal, dx=1/FREQ_SAMPLING))
+    
+    iemg_arr = np.array(iemg_arr)
+    return iemg_arr
 
-    return iemg
+
+def get_variance_EMG(windowed_signal_arr):
+    
+    var_arr = []
+
+    for window in windowed_signal_arr:
+        var_arr.append(np.var(window))
+
+    return np.array(var_arr)
 
 
 def main():
@@ -585,6 +659,8 @@ def main():
     muscle_str = sys.argv[3]
 
     semg_df = get_sEMG_data(subject, act_str)
+    kinec_df = get_kinematic_data(subject, act_str)
+    print(kinec_df.columns, "\n\n\n")
 
     if (muscle_str == 'all'):
         for muscle in semg_df.columns:
@@ -593,18 +669,17 @@ def main():
             signal_processing(semg_df, muscle, FILTER_LIST)
             # signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
             normalize_data(subject, semg_df, muscle, True)
-            get_Du_feature_set(muscle, semg_df)
+            windowed_signal = window_sliding(muscle, semg_df, act_str)
+            get_Du_feature_set(windowed_signal)
     else:
         muscle = 'sEMG: ' + muscle_str
         signal_processing(semg_df, muscle, FILTER_LIST)
         # signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
         normalize_data(subject, semg_df, muscle, True)
+        windowed_signal = window_sliding(muscle, semg_df, act_str)
+        get_Du_feature_set(windowed_signal)
 
-    if muscle_str != 'all':
-        # plot_spectrogram(subject, semg_df, act_str, muscle_str)
-        get_Du_feature_set(muscle, semg_df)
-        window_sliding(muscle, semg_df, act_str)
-    plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], filtered=True, envelope=False)
+    plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], joint='left knee flexion angle', filtered=True, envelope=False, kinem_df=kinec_df)
     plt.show()
 
 
