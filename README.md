@@ -8,6 +8,7 @@ This is a repository dedicated for my TFG. It will be a machine learning system 
 Tengo que añadir todo  la anterior.
 
 La fórmula de la pendiente es:
+
      y2 - y1
      
 m = ---------
