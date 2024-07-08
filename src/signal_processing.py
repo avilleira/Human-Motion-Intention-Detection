@@ -629,6 +629,9 @@ def get_Du_feature_set(windowed_signal_arr):
         elif feature == 'zero crossing':
             du_data[feature] = get_zero_crossing(windowed_signal_arr)
 
+        elif feature == 'slope sign':
+            du_data[feature] = get_slope_sign(windowed_signal_arr)
+
     print(du_data)
 
 
@@ -646,7 +649,6 @@ def get_integrated_EMG(signal_arr):
 def get_variance_EMG(windowed_signal_arr):
     
     var_arr = []
-
     for window in windowed_signal_arr:
         var_arr.append(np.var(window))
 
@@ -660,7 +662,6 @@ def get_waveform_length(windowed_signal_arr):
     """
 
     waveform_arr = []
-
     for window in windowed_signal_arr:
         waveform_arr.append(np.sum(np.abs(np.diff(window))))
 
@@ -670,7 +671,6 @@ def get_waveform_length(windowed_signal_arr):
 def get_zero_crossing(windowed_signal_arr):
     
     zero_cross = []
-
     for window in windowed_signal_arr:
         zero_cross.append(np.sum(np.diff(np.sign(window)) != 0)) # np.sign calculates the signs of the value (-1 negative) (1 positive)
         # np.sum(boolean operation) sum all the elements that achieve the operation
@@ -681,9 +681,13 @@ def get_zero_crossing(windowed_signal_arr):
 def get_slope_sign(windowed_signal_arr):
     
     slope_sign_arr = []
-
     for window in windowed_signal_arr:
-        print("hola")
+        # First, calculate the difference between consecutive points. After that, the signs
+        slope_sign = np.sign(np.diff(window))
+        # Get the slope signs changesc ounter
+        slope_sign_arr.append(np.sum(np.diff(slope_sign) != 0))
+
+    return np.array(slope_sign_arr)
 
 
 def main():
