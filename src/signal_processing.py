@@ -19,7 +19,7 @@ NORMS_PARAM_FILE = '/home/avilleira/TFG/tfg/data/normalization_params.csv'
 TIME_UNTIL_MOVEMENT = 3 #seconds
 MUSCLES_N = 9
 FILTER_LIST = ['notch', 'butterworth', 'wavelet']
-DU_SET_LIST = ['iemg', 'variance']
+DU_SET_LIST = ['iemg', 'variance', 'waveform', 'zero crossing']
 
 PLT_AMPLITUDE_OFFSET = 0.05
 FREQ_SAMPLING = 1920
@@ -390,20 +390,20 @@ def normalize_data(sub, df, muscle, filtered=False, envelope=False):
     df[muscle] = df[muscle] / max_contraction
 
 
-def get_slope(df, joint_id):
-    print(df)
+def get_joint_slope(df, joint_id):
+
     dif_x = df['Time'].diff()
-    print(joint_id)
     dif_y = df[joint_id].diff()
 
     slope_str = 'Slope: ' + joint_id
     df[slope_str] = dif_y / dif_x
 
+    # In the case of the first and the last position, 
+    # the operation above does not work
     df[slope_str].iloc[0] = (df[joint_id].iloc[1] - df[joint_id].iloc[0]) / (df['Time'].iloc[1] - df['Time'].iloc[0])
     df[slope_str].iloc[-1] = (df[joint_id].iloc[-1] - df[joint_id].iloc[-2]) / (df['Time'].iloc[-1] - df['Time'].iloc[-2])
 
     return df
-
 
 # -------------- PLOT FUNCTIONS --------------
 
@@ -464,11 +464,13 @@ def plot_sEMG_signal(sub, df, action, muscles=['all'], joint='', filtered=False,
     if muscles[0] == 'Time':
         muscles = muscles[1:]
 
-    joint = 'Kinematic: ' + joint
+    #joint = 'Kinematic: ' + joint
 
-    joint_data = kinem_df[joint] / 180
-    kinem_df = get_slope(kinem_df, joint)
-    print(kinem_df['Slope: Kinematic: left knee flexion angle'].min())
+    #joint_data = kinem_df[joint] / 180
+    #kinem_df = get_slope(kinem_df, joint)
+
+    #slope = 'Slope: ' + joint
+    #print(np.mean(kinem_df[slope]))
     # Starts to plot
     for muscle in muscles:
         ax = fig.add_subplot(plt_index)
@@ -476,7 +478,7 @@ def plot_sEMG_signal(sub, df, action, muscles=['all'], joint='', filtered=False,
             ax.plot(np.array(df['Time']), np.array(df[muscle]), color='coral')
         elif filtered == True:
             ax.plot(np.array(df['Time']), np.array(df[muscle]), color='darkgreen')
-            ax.plot(np.array(df['Time']), np.array(joint_data), color='red')
+            #ax.plot(np.array(df['Time']), np.array(kinem_df[slope]), color='red')
 
         else:
             ax.plot(np.array(df['Time']), np.array(df[muscle]))
@@ -527,8 +529,6 @@ def signal_processing(df, muscle, filters_list):
     :param filters_list: List of all the filters are made in the process
     :type: string List
     """
-    print("----FILTER ZONE----")
-    print("MUSCLE:", muscle)
 
     muscle_signal = df[muscle].values
     
@@ -543,21 +543,17 @@ def signal_processing(df, muscle, filters_list):
     for filter in filters_list:
         if filter == 'mean_off':
             filtered_signal = remove_mean_offset(filtered_signal, get_avg_value(filtered_signal, df['Time'].values, 0, TIME_UNTIL_MOVEMENT))
-            print("Filtro AVERAGE aplicado")
 
         if filter == 'notch':
             filtered_signal = get_notch_filtered_signal(filtered_signal, NOTCH_FREQ_TO_REMOVE,
                 NOTCH_QUALITY_FACTOR, FREQ_SAMPLING)
-            print("Filtro Notch aplicado")
 
         if filter == 'butterworth':
             filtered_signal = get_butterworth_filtered_signal(filtered_signal, 
                 'bandpass', [BUTTER_LOW_FREQ, BUTTER_HIGH_FREQ], 1920, BUTTER_ORDER)
-            print("Filtro Butterworth paso banda aplicado")
         
         if filter == 'wavelet':
             filtered_signal = get_wavelet_filtered_signal(filtered_signal)
-            print("Filtro de Wavelet aplicado")
         
     add_column_to_df(df, col_name, filtered_signal)
 
@@ -598,6 +594,7 @@ def signal_envelope(df, muscle, high_cut_freq=ENVELOP_HIGH_CUT_FREQ, low_cut_fre
 
 
 # =========================== DATA ANALYSIS ===========================
+
 def window_sliding(muscle, df, action):
     """
     Sliding Window to get the data easily
@@ -618,15 +615,21 @@ def window_sliding(muscle, df, action):
 
 def get_Du_feature_set(windowed_signal_arr):
 
-    du_data = np.empty(0)
-
+    du_data = {} # Dictionary
     for feature in DU_SET_LIST:
         if feature == 'iemg':
-            iemg = get_integrated_EMG(windowed_signal_arr)
-            np.append(du_data, iemg)
-        if feature == 'variance':
-            var = get_variance_EMG(windowed_signal_arr)
-            np.append(du_data, var)
+            du_data[feature] = get_integrated_EMG(windowed_signal_arr)
+
+        elif feature == 'variance':
+            du_data[feature] = get_variance_EMG(windowed_signal_arr)
+
+        elif feature == 'waveform':
+            du_data[feature] = get_waveform_length(windowed_signal_arr)
+
+        elif feature == 'zero crossing':
+            du_data[feature] = get_zero_crossing(windowed_signal_arr)
+
+    print(du_data)
 
 
 def get_integrated_EMG(signal_arr):
@@ -650,7 +653,41 @@ def get_variance_EMG(windowed_signal_arr):
     return np.array(var_arr)
 
 
+def get_waveform_length(windowed_signal_arr):
+    """
+    Cumulative length of the EMG waveform over the time segment.
+    :param windowed_signal_arr: 
+    """
+
+    waveform_arr = []
+
+    for window in windowed_signal_arr:
+        waveform_arr.append(np.sum(np.abs(np.diff(window))))
+
+    return np.array(waveform_arr)
+
+
+def get_zero_crossing(windowed_signal_arr):
+    
+    zero_cross = []
+
+    for window in windowed_signal_arr:
+        zero_cross.append(np.sum(np.diff(np.sign(window)) != 0)) # np.sign calculates the signs of the value (-1 negative) (1 positive)
+        # np.sum(boolean operation) sum all the elements that achieve the operation
+    
+    return np.array(zero_cross)
+
+
+def get_slope_sign(windowed_signal_arr):
+    
+    slope_sign_arr = []
+
+    for window in windowed_signal_arr:
+        print("hola")
+
+
 def main():
+
     if len(sys.argv) != ARGS_N:
         usage()
 
@@ -660,7 +697,6 @@ def main():
 
     semg_df = get_sEMG_data(subject, act_str)
     kinec_df = get_kinematic_data(subject, act_str)
-    print(kinec_df.columns, "\n\n\n")
 
     if (muscle_str == 'all'):
         for muscle in semg_df.columns:
@@ -679,7 +715,7 @@ def main():
         windowed_signal = window_sliding(muscle, semg_df, act_str)
         get_Du_feature_set(windowed_signal)
 
-    plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], joint='left knee flexion angle', filtered=True, envelope=False, kinem_df=kinec_df)
+    plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], filtered=True, envelope=False)
     plt.show()
 
 
