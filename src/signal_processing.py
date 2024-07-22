@@ -13,13 +13,16 @@ import pywt
 # MACROS
 
 EXIT_FAILURE = 1
-ARGS_N = 4
+ARGS_N = 1
 DATASET_PATH = '/home/avilleira/TFG/dataset/SIAT_LLMD20230404/'
+TRAIN_DATA_PATH = '/home/avilleira/TFG/tfg/data/training_data.csv'
 NORMS_PARAM_FILE = '/home/avilleira/TFG/tfg/data/normalization_params.csv'
 TIME_UNTIL_MOVEMENT = 3 #seconds
 MUSCLES_N = 9
 FILTER_LIST = ['notch', 'butterworth', 'wavelet']
-DU_SET_LIST = ['iemg', 'variance', 'waveform', 'zero crossing']
+DU_SET_LIST = ['iemg', 'variance', 'waveform length', 'zero crossing', 'slope sign change', 'willison amplitude']
+DU_FEATURES_N = len(DU_SET_LIST)
+ACTIONS_LIST = ['STDUP', 'SITDN', 'WAK']
 
 PLT_AMPLITUDE_OFFSET = 0.05
 FREQ_SAMPLING = 1920
@@ -42,6 +45,8 @@ WVLT_LEVEL = 9
 
 SEMG_WINDOW_SIZE = 150
 WAK_WINDOW_SIZE = 80
+
+WILLISON_THRESHOLD = 0.0005
 
 
 def usage():
@@ -623,16 +628,23 @@ def get_Du_feature_set(windowed_signal_arr):
         elif feature == 'variance':
             du_data[feature] = get_variance_EMG(windowed_signal_arr)
 
-        elif feature == 'waveform':
+        elif feature == 'waveform length':
             du_data[feature] = get_waveform_length(windowed_signal_arr)
 
         elif feature == 'zero crossing':
             du_data[feature] = get_zero_crossing(windowed_signal_arr)
 
-        elif feature == 'slope sign':
+        elif feature == 'slope sign change':
             du_data[feature] = get_slope_sign(windowed_signal_arr)
+        
+        elif feature == 'willison amplitude':
+            du_data[feature] = get_willison_amplitude(windowed_signal_arr)
 
-    print(du_data)
+        else:
+            print("Error: Feature not valid")
+            exit(EXIT_FAILURE)
+
+    return du_data
 
 
 def get_integrated_EMG(signal_arr):
@@ -642,7 +654,6 @@ def get_integrated_EMG(signal_arr):
         abs_signal = np.abs(window)
         iemg_arr.append(integrate.simpson(abs_signal, dx=1/FREQ_SAMPLING))
     
-    iemg_arr = np.array(iemg_arr)
     return iemg_arr
 
 
@@ -652,30 +663,35 @@ def get_variance_EMG(windowed_signal_arr):
     for window in windowed_signal_arr:
         var_arr.append(np.var(window))
 
-    return np.array(var_arr)
+    return var_arr
 
 
 def get_waveform_length(windowed_signal_arr):
     """
     Cumulative length of the EMG waveform over the time segment.
-    :param windowed_signal_arr: 
+    :param windowed_signal_arr:
+    :type: numpy.ndarray
     """
 
     waveform_arr = []
     for window in windowed_signal_arr:
         waveform_arr.append(np.sum(np.abs(np.diff(window))))
 
-    return np.array(waveform_arr)
+    return waveform_arr
 
 
 def get_zero_crossing(windowed_signal_arr):
     
     zero_cross = []
     for window in windowed_signal_arr:
-        zero_cross.append(np.sum(np.diff(np.sign(window)) != 0)) # np.sign calculates the signs of the value (-1 negative) (1 positive)
+        sign_values = np.sign(window)
+        # If the value is 0, changin to positive
+        sign_values[sign_values == 0] = 1
+
+        zero_cross.append(np.sum(np.diff(sign_values) != 0)) # np.sign calculates the signs of the value (-1 negative) (1 positive)
         # np.sum(boolean operation) sum all the elements that achieve the operation
     
-    return np.array(zero_cross)
+    return zero_cross
 
 
 def get_slope_sign(windowed_signal_arr):
@@ -684,10 +700,34 @@ def get_slope_sign(windowed_signal_arr):
     for window in windowed_signal_arr:
         # First, calculate the difference between consecutive points. After that, the signs
         slope_sign = np.sign(np.diff(window))
-        # Get the slope signs changesc ounter
+        slope_sign[slope_sign == 0] = 1
+        
+        # Get the slope signs changes counter
         slope_sign_arr.append(np.sum(np.diff(slope_sign) != 0))
 
-    return np.array(slope_sign_arr)
+    return slope_sign_arr
+
+
+def get_willison_amplitude(windowed_signal_arr):
+    
+    willison_arr = []
+    for window in windowed_signal_arr:
+        willison_arr.append(np.sum(np.abs(np.diff(window)) > WILLISON_THRESHOLD))
+    
+    return willison_arr
+
+
+def generate_data_csv(inputs, output_action):
+
+    df = pd.DataFrame([inputs])
+    # Add output as the last column
+    df['output'] = output_action
+
+    # Save it in a CSV
+    if os.path.isfile(TRAIN_DATA_PATH):
+        df.to_csv(TRAIN_DATA_PATH, mode='a', header= False, index=False)
+    else:
+        df.to_csv(TRAIN_DATA_PATH, index=False)
 
 
 def main():
@@ -695,32 +735,71 @@ def main():
     if len(sys.argv) != ARGS_N:
         usage()
 
-    subject = sys.argv[1]
-    act_str = sys.argv[2]
-    muscle_str = sys.argv[3]
+    #subject = sys.argv[1]
+    #act_str = sys.argv[2]
+    #muscle_str = sys.argv[3]
 
-    semg_df = get_sEMG_data(subject, act_str)
-    kinec_df = get_kinematic_data(subject, act_str)
+    #semg_df = get_sEMG_data(subject, act_str)
+    #kinec_df = get_kinematic_data(subject, act_str)
 
-    if (muscle_str == 'all'):
-        for muscle in semg_df.columns:
-            if muscle == 'Time':
-                continue
-            signal_processing(semg_df, muscle, FILTER_LIST)
-            # signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
-            normalize_data(subject, semg_df, muscle, True)
-            windowed_signal = window_sliding(muscle, semg_df, act_str)
-            get_Du_feature_set(windowed_signal)
-    else:
-        muscle = 'sEMG: ' + muscle_str
-        signal_processing(semg_df, muscle, FILTER_LIST)
-        # signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
-        normalize_data(subject, semg_df, muscle, True)
-        windowed_signal = window_sliding(muscle, semg_df, act_str)
-        get_Du_feature_set(windowed_signal)
+    # Processing all the subjects
+    dir_elements = os.listdir(DATASET_PATH)
+    # Selecting only the subjects directories
+    subjects = [elem for elem in dir_elements if 
+                os.path.isdir(os.path.join(DATASET_PATH, elem)) and elem.startswith('Sub')]
+    
 
-    plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], filtered=True, envelope=False)
-    plt.show()
+    for sub in subjects:
+        for action in ACTIONS_LIST:
+            semg_df = get_sEMG_data(sub, action)
+            data_dict = {}
+            
+            for muscle in semg_df.columns:            
+                # Not counting time column
+                if muscle == 'Time':
+                    continue
+                # Filters
+                signal_processing(semg_df, muscle, FILTER_LIST)
+                # Normalizing data
+                normalize_data(sub, semg_df, muscle, filtered=True)
+                # Windowing signal
+                windowed_signal = window_sliding(muscle, semg_df, action)
+                # Du features
+                signal_features = get_Du_feature_set(windowed_signal)
+
+                for feature in signal_features:
+                    if feature not in data_dict:
+                        data_dict[feature] = [signal_features[feature]]
+                    else:
+                        data_dict[feature].append(signal_features[feature])
+            # Generate the Data CSV
+            generate_data_csv(data_dict, action)
+
+        print(f"{sub} finalizado")
+    
+    # if (muscle_str == 'all'):
+    #     for muscle in semg_df.columns:
+    #         if muscle == 'Time':
+    #             continue
+    #         signal_processing(semg_df, muscle, FILTER_LIST)
+    #         # signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
+    #         normalize_data(subject, semg_df, muscle, True)
+    #         windowed_signal = window_sliding(muscle, semg_df, act_str)
+    #         signal_features = get_Du_feature_set(windowed_signal)
+    #         generate_data_csv(signal_features, muscle, act_str)
+
+
+    # else:
+    #     muscle = 'sEMG: ' + muscle_str
+    #     signal_processing(semg_df, muscle, FILTER_LIST)
+    #     # signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
+    #     normalize_data(subject, semg_df, muscle, True)
+    #     windowed_signal = window_sliding(muscle, semg_df, act_str)
+    #     signal_features = get_Du_feature_set(windowed_signal)
+    #     generate_data_csv(signal_features, muscle, act_str)
+
+    # #plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], filtered=True, envelope=False)
+    # plt.show()
 
 
 if __name__ == "__main__":
