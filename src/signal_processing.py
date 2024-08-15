@@ -145,9 +145,10 @@ def get_kinematic_data(subject, action_str):
 def get_abs_sEMG_data(df):
     """
     Creates a new dataframe with the absolute values of the different muscles
-    # Parameters:
+
     :param df: Dataframe of the sEMG signals
     :type: pd.Dataframe
+
     :return: The absolute values dataframe
     :rtype: pd.Dataframe
     """
@@ -233,8 +234,9 @@ def get_avg_value(signal_arr, time_arr, init_time=-1.0, end_time=-1.0):
 def get_max_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
     """
     Returns the max value of the absolute signal from the init time to the end time muscle_data.
+
     :param muscle_id: Muscle where the signal is recorded
-    :rtype: double
+    :type: double
     """
     time_arr = np.array(df['Time'])
     signal_arr = np.array(df[muscle_id])
@@ -251,12 +253,16 @@ def get_max_value(muscle_id, df, init_time=-1.0, end_time=-1.0):
 def remove_mean_offset(signal_arr, avg):
     """
     It returns a dataframe without the mean offset.
+
     :param muscle_id: Muscle where the signal is recorded
     :type: string
+
     :param df: Absolute values dataframe. If it is negative, it returns an error and exit
     :type: Pandas Dataframe
+
     :param avg: The mean value of the time interval
     :type: double
+
     :return: The dataframe without the offset
     :rtype: Pandas dataframe
     """
@@ -271,7 +277,7 @@ def remove_mean_offset(signal_arr, avg):
 def get_signal_spectrogram(signal_arr):
     """ 
     Get the signal spectrogram.
-    # Parameters:
+
     :param signal_arr: Values of the determined signal
     """
 
@@ -281,7 +287,6 @@ def get_signal_spectrogram(signal_arr):
 
 def get_max_wak_contraction_value(sub, muscle):
     """
-    
     """
     
     max_contraction = 0
@@ -573,7 +578,6 @@ def signal_envelope(df, muscle, high_cut_freq=ENVELOP_HIGH_CUT_FREQ, low_cut_fre
     :param fs:
     :param order:
     '''
-    print("----ENVELOPE ZONE----")
 
     filtered_name = 'Filtered ' + muscle
     f_signal = np.copy(df[filtered_name].values)
@@ -595,10 +599,9 @@ def signal_envelope(df, muscle, high_cut_freq=ENVELOP_HIGH_CUT_FREQ, low_cut_fre
 
     add_column_to_df(df, envelope_name, env_signal)
 
-    print("Envolvente creada")
-
 
 # =========================== DATA ANALYSIS ===========================
+
 
 def window_sliding(muscle, df, action):
     """
@@ -618,6 +621,41 @@ def window_sliding(muscle, df, action):
     return slide_signal_arr
 
 
+def get_activity_in_signal(sub, windowed_signal, action):
+    """
+    Getting the windowed signal windows that are actually activated. The measure
+    is done by detecting if in a signal window the action is activated the half
+    time or more.
+
+    # Parameters:
+    :param sub: Name of the subject whose data comes from
+    :type: string
+    :param windowed_signal:
+    :type: numpy.ndarray
+    :param action: Movement the subject is doing
+    :type: string
+    """
+
+    labels_file_name = sub + "_" + action + "_Label.csv"
+    file_path = os.path.join(DATASET_PATH, sub, 'Labels', labels_file_name)
+
+    # Reading the csv
+    labels = pd.read_csv(file_path)
+    active_windowed_signal = window_sliding('Status', labels, action)
+
+    # If the signal is half activated or more, dectects it as activated
+    act_wind_labels = np.array(['A' if np.count_nonzero(window == 'A') >=
+                        len(window) / 2 else 'R' for window in active_windowed_signal])
+    
+    # Once we have the activity, then filter the signal windows
+    filtered_window_singal = []
+    for window_index in range(len(act_wind_labels)):
+        if act_wind_labels[window_index] == 'A':
+            filtered_window_singal.append(windowed_signal[window_index])
+    
+    return filtered_window_singal
+
+      
 def get_Du_feature_set(windowed_signal_arr):
 
     du_data = {} # Dictionary
@@ -717,17 +755,34 @@ def get_willison_amplitude(windowed_signal_arr):
     return willison_arr
 
 
-def generate_data_csv(inputs, output_action):
+def generate_data_csv(inputs: dict, output_action: str):
+    """
+    Generate the dataframe in order to create the dataset.
+    The structure is
+    LABEL               ....        OUTPUT
+    (x, x, x, x, x, x,)               y
+    """
+    df = pd.DataFrame()
 
-    df = pd.DataFrame([inputs])
     # Add output as the last column
-    df['output'] = output_action
+    if output_action == 'STDUP':
+        action = 0
+    elif output_action == 'SITDN':
+        action = 1
+    elif output_action == 'WAK':
+        action = 2
+    
+    print(inputs.keys())
+    for key in inputs.keys():
+        data_list = [data for data in zip(*inputs[key])]
+                
+    #df['output'] = action
 
-    # Save it in a CSV
-    if os.path.isfile(TRAIN_DATA_PATH):
-        df.to_csv(TRAIN_DATA_PATH, mode='a', header= False, index=False)
-    else:
-        df.to_csv(TRAIN_DATA_PATH, index=False)
+    ## Save it in a CSV
+    #if os.path.isfile(TRAIN_DATA_PATH):
+    #    df.to_csv(TRAIN_DATA_PATH, mode='a', header= False, index=False)
+    #else:
+    #    df.to_csv(TRAIN_DATA_PATH, index=False)
 
 
 def main():
@@ -735,13 +790,7 @@ def main():
     if len(sys.argv) != ARGS_N:
         usage()
 
-    #subject = sys.argv[1]
-    #act_str = sys.argv[2]
-    #muscle_str = sys.argv[3]
-
-    #semg_df = get_sEMG_data(subject, act_str)
-    #kinec_df = get_kinematic_data(subject, act_str)
-
+    #subject = sys.argv[1]semg_df
     # Processing all the subjects
     dir_elements = os.listdir(DATASET_PATH)
     # Selecting only the subjects directories
@@ -753,8 +802,8 @@ def main():
         for action in ACTIONS_LIST:
             semg_df = get_sEMG_data(sub, action)
             data_dict = {}
-            
-            for muscle in semg_df.columns:            
+
+            for muscle in semg_df.columns:       
                 # Not counting time column
                 if muscle == 'Time':
                     continue
@@ -762,8 +811,11 @@ def main():
                 signal_processing(semg_df, muscle, FILTER_LIST)
                 # Normalizing data
                 normalize_data(sub, semg_df, muscle, filtered=True)
+                
                 # Windowing signal
                 windowed_signal = window_sliding(muscle, semg_df, action)
+                # Extracting activated signal
+                windowed_signal = get_activity_in_signal(sub, windowed_signal, action)
                 # Du features
                 signal_features = get_Du_feature_set(windowed_signal)
 
@@ -774,6 +826,8 @@ def main():
                         data_dict[feature].append(signal_features[feature])
             # Generate the Data CSV
             generate_data_csv(data_dict, action)
+            break
+        break
 
         print(f"{sub} finalizado")
     
