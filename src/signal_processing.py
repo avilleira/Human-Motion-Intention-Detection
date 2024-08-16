@@ -23,6 +23,7 @@ FILTER_LIST = ['notch', 'butterworth', 'wavelet']
 DU_SET_LIST = ['iemg', 'variance', 'waveform length', 'zero crossing', 'slope sign change', 'willison amplitude']
 DU_FEATURES_N = len(DU_SET_LIST)
 ACTIONS_LIST = ['STDUP', 'SITDN', 'WAK']
+ACTIONS_DICT = {'REST': -1, 'STDUP': 0, 'SITDN': 1, 'WAK': 2}
 
 PLT_AMPLITUDE_OFFSET = 0.05
 FREQ_SAMPLING = 1920
@@ -821,22 +822,14 @@ def generate_data_csv(inputs: dict, output_action: str):
     """
 
     df = pd.DataFrame()
-    # Add output as the last column
-    if output_action == 'STDUP':
-        action = 0
-    elif output_action == 'SITDN':
-        action = 1
-    elif output_action == 'WAK':
-        action = 2
-    else:
-        action = NO_ACTIVITY
     
+    # Get the different elements from all the arrays at the same time
     for key in inputs.keys():
         data_list = [list(data) for data in zip(*inputs[key])]
-        for data in data_list:
-            df[key] = data_list
-                
-    df['output'] = action
+        df[key] = data_list
+
+    # Add output as the last column
+    df['output'] = ACTIONS_DICT[output_action]
 
     # Save it in a CSV
     if os.path.isfile(TRAIN_DATA_PATH):
@@ -863,7 +856,7 @@ def main():
             data_dict = {}
             des_data_dict = {}
 
-            for muscle in semg_df.columns:       
+            for muscle in semg_df.columns:   
                 # Not counting time column
                 if muscle == 'Time':
                     continue
@@ -896,7 +889,7 @@ def main():
             # Generate the Data CSV
             generate_data_csv(data_dict, action)
             # No activity csv
-            generate_data_csv(des_data_dict, 'NO ACTIVITY')
+            generate_data_csv(des_data_dict, 'REST')
 
         print(f"{sub} finalizado")
     
