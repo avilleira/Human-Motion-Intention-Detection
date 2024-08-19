@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 from sklearn import svm
 from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
+import joblib
 
 TRAIN_DATA_PATH = '/home/avilleira/TFG/tfg/data/training_data.csv'
 DU_SET_LIST = ['iemg', 'variance', 'waveform length', 'zero crossing', 'slope sign change', 'willison amplitude']
@@ -58,14 +60,23 @@ def main():
     X = pd.concat(flattened_columns, axis=1)
     Y = data_svm['output']
 
+    # The dataset is needed to be split in order to train, validate and test
+    # Train and validation: 80% and test: 20%
+    X_train_val, X_test, Y_train_val, Y_test = train_test_split(X, Y, test_size=0.2,
+                                                    random_state=42)
+    # Splitting training dataset in train and validation
+    X_train, X_val, Y_train, Y_val = train_test_split(X_train_val, Y_train_val,
+                                        test_size=0.3, random_state=42)
     # Model training
     print("Starting training")
-    svm_mdl.fit(X, Y)
+    svm_mdl.fit(X_train, Y_train)
+    # Saving it
+    joblib.dump(svm_mdl, '../data/svm_model.joblib')
 
     # Salida predicha
-    y_pred = svm_mdl.predict(X)
+    y_pred = svm_mdl.predict(X_test)
     # Error en la precisión
-    err = 1 - (accuracy_score(Y, y_pred))
+    err = 1 - (accuracy_score(Y_test, y_pred))
     print(f"ERROR: {err}")
 
 
