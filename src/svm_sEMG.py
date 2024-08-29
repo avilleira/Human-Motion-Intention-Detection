@@ -1,13 +1,20 @@
 import ast
+import joblib
+import matplotlib.pyplot as plt
+import seaborn as sns
 import pandas as pd
 import numpy as np
 from sklearn import svm
-from sklearn.metrics import accuracy_score
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
-import joblib
+from imblearn.under_sampling import RandomUnderSampler
+
 
 TRAIN_DATA_PATH = '/home/avilleira/TFG/tfg/data/training_data.csv'
 DU_SET_LIST = ['iemg', 'variance', 'waveform length', 'zero crossing', 'slope sign change', 'willison amplitude']
+OUTPUTS = ['REST', 'STDUP', 'SITDN', 'WAK']
 
 
 def is_str_list(str_list):
@@ -36,6 +43,49 @@ def flatten_column(df, col):
         return flattened_df
     else:
         return df[[col]]
+    
+
+def get_confusion_matrix(mdl, input_test, output_test):
+    
+    y_predicted = mdl.predict(input_test)
+
+    cm = confusion_matrix(output_test, y_predicted)
+
+    # Visualizar la matriz de confusión
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="YlOrBr", xticklabels=OUTPUTS, yticklabels=OUTPUTS)
+    plt.xlabel('Predicted Labels')
+    plt.ylabel('True Labels')
+    plt.title('Confusion Matrix')
+    plt.show()
+
+
+def PCA_transform(input_train):
+    
+    input_normalize = StandardScaler().fit_transform(input_train)
+
+    PCA_mdl = PCA().fit(input_normalize)
+
+    retained_var = np.cumsum(PCA_mdl.explained_variance_ratio_)
+
+    # Nueva figura
+    fig = plt.figure()
+    ax = fig.add_subplot()
+
+    # Se muestra los valores de la varianza retenida acumulada
+    ax.plot(retained_var)
+    ax.set_xlabel("Dimensiones (k-1)")
+    ax.set_ylabel("Varianza Explicada Retenida")
+    ax.set_title("PCA")
+    ax.grid()
+
+    plt.show()
+
+
+def balance_dataset(input, output):
+    """
+    This function includes all the fu
+    """
 
 
 def main():
@@ -55,29 +105,39 @@ def main():
     for col in DU_SET_LIST:
         flattened_columns.append(flatten_column(data_svm, col))
     # Let's start with a Linear kernel:
-    svm_mdl = svm.SVC(kernel="poly")
+    svm_mdl = svm.SVC(kernel="linear")
 
     X = pd.concat(flattened_columns, axis=1)
     Y = data_svm['output']
 
+    # While the dataset is unbalance, it must be balanced
+    under_sampler = RandomUnderSampler(random_state=42)
+    x_resampled, y_resampled = under_sampler.fit_resample(X, Y)
+    x_resampled = StandardScaler().fit_transform(x_resampled)
+
     # The dataset is needed to be split in order to train, validate and test
     # Train and validation: 80% and test: 20%
-    X_train_val, X_test, Y_train_val, Y_test = train_test_split(X, Y, test_size=0.2,
+    X_train_val, X_test, Y_train_val, Y_test = train_test_split(x_resampled, y_resampled, test_size=0.2,
                                                     random_state=42)
     # Splitting training dataset in train and validation
     X_train, X_val, Y_train, Y_val = train_test_split(X_train_val, Y_train_val,
                                         test_size=0.3, random_state=42)
     # Model training
     print("Starting training")
+    print("PCA")
+    # PCA_transform(X_train)
+
     svm_mdl.fit(X_train, Y_train)
     # Saving it
-    joblib.dump(svm_mdl, '../data/svm_model.joblib')
+    # joblib.dump(svm_mdl, '../data/svm_model.joblib')
 
     # Salida predicha
+    #svm_mdl = joblib.load('../data/svm_model.joblib')
+    get_confusion_matrix(svm_mdl, X_test, Y_test)
     y_pred = svm_mdl.predict(X_test)
     # Error en la precisión
-    err = 1 - (accuracy_score(Y_test, y_pred))
-    print(f"ERROR: {err}")
+    acc = accuracy_score(Y_test, y_pred) * 100
+    print(f"Accuracy: {acc}")
 
 
 if __name__ == "__main__":
