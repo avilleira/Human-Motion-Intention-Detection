@@ -5,11 +5,12 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 from sklearn import svm
+from sklearn.multiclass import OneVsOneClassifier
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
-from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTEENN
 
 
 TRAIN_DATA_PATH = '/home/avilleira/TFG/tfg/data/training_data.csv'
@@ -45,9 +46,8 @@ def flatten_column(df, col):
         return df[[col]]
     
 
-def get_confusion_matrix(mdl, input_test, output_test):
+def get_confusion_matrix(mdl, input_test, y_predicted, output_test):
     
-    y_predicted = mdl.predict(input_test)
 
     cm = confusion_matrix(output_test, y_predicted)
 
@@ -104,15 +104,18 @@ def main():
     print("Flattening cols")
     for col in DU_SET_LIST:
         flattened_columns.append(flatten_column(data_svm, col))
-    # Let's start with a Linear kernel:
-    svm_mdl = svm.SVC(kernel="linear")
 
     X = pd.concat(flattened_columns, axis=1)
     Y = data_svm['output']
 
+    # Polynomial Kernel with degree 2, using OnevsOneClassifier
+    svm_mdl = svm.SVC(kernel="poly", degree=2)
+    svm_mdl = OneVsOneClassifier(svm_mdl)
+
     # While the dataset is unbalance, it must be balanced
-    under_sampler = RandomUnderSampler(random_state=42)
-    x_resampled, y_resampled = under_sampler.fit_resample(X, Y)
+    # SMOTEENN balances under and over
+    smote_enn = SMOTEENN(random_state=42)
+    x_resampled, y_resampled = smote_enn.fit_resample(X, Y)
     x_resampled = StandardScaler().fit_transform(x_resampled)
 
     # The dataset is needed to be split in order to train, validate and test
@@ -133,11 +136,12 @@ def main():
 
     # Salida predicha
     #svm_mdl = joblib.load('../data/svm_model.joblib')
-    get_confusion_matrix(svm_mdl, X_test, Y_test)
     y_pred = svm_mdl.predict(X_test)
     # Error en la precisión
     acc = accuracy_score(Y_test, y_pred) * 100
     print(f"Accuracy: {acc}")
+    get_confusion_matrix(svm_mdl, X_test, y_pred, Y_test)
+
 
 
 if __name__ == "__main__":
