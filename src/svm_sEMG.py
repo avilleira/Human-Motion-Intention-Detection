@@ -84,7 +84,20 @@ def PCA_transform(input_train):
     plt.show()
 
 
-def balance_dataset(input_train, input_test, input_val, output_train):
+def plot_data_hist(data):
+
+    print("Entro")
+    plt.hist(data, bins='auto')
+    plt.title('Output Histogram')
+
+    plt.xlabel('Output')
+    plt.ylabel('Samples')
+    plt.xticks([0, 1, 2, 3], OUTPUTS)
+
+    plt.show()
+
+
+def balance_dataset(input, output):
     """
     This function includes all the functionality in charge of the balancing,
     scaling of the dataset
@@ -105,14 +118,10 @@ def balance_dataset(input_train, input_test, input_val, output_train):
     scaler = StandardScaler()
 
     #Balancing an scaling the train dataset
-    input_train_resampled, output_train_resampled = smote_enn.fit_resample(input_train, output_train)
-    input_train_resampled = scaler.fit_transform(input_train_resampled)
-    # Scaling validation
-    input_val_resampled = scaler.transform(input_val)
-    # Scaling test values
-    input_test_resampled = scaler.transform(input_test)
+    input_resampled, output_resampled = smote_enn.fit_resample(input, output)
+    input_resampled = scaler.fit_transform(input_resampled)
 
-    return input_train_resampled, output_train_resampled, input_test_resampled, input_val_resampled
+    return input_resampled, output_resampled
 
 
 def main():
@@ -138,6 +147,11 @@ def main():
 
     X = pd.concat(flattened_columns, axis=1)
     Y = data_svm['output']
+
+    print("Balancing...")
+    X, Y = balance_dataset(X, Y)
+    print("Finished Balancing")
+
     # The dataset is needed to be split in order to train, validate and test
     # Train and validation: 80% and test: 20%
     X_train_val, X_test, Y_train_val, Y_test = train_test_split(X, Y, test_size=0.2,
@@ -147,9 +161,7 @@ def main():
                                         test_size=0.3, random_state=42)
     # Model training
     
-    print("Balancing...")
-    X_train, Y_train, X_test, X_val = balance_dataset(X_train, X_test, X_val, Y_train)
-    print("Finished Balancing")
+    # plot_data_hist(Y_test)
 
     print("Starting training...")
     svm_mdl.fit(X_train, Y_train)
