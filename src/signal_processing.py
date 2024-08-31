@@ -693,7 +693,7 @@ def get_activity_in_signal(sub, windowed_signal, action):
 
     # If the signal is half activated or more, dectects it as activated
     act_wind_labels = np.array(['A' if np.count_nonzero(window == 'A') >=
-                        (1 * len(window)) / 2 else 'R' for window in active_windowed_signal])
+                        (2 * len(window)) / 2 else 'R' for window in active_windowed_signal])
     
     # Once we have the activity, then filter the signal windows
     act_window_singal = []
