@@ -16,6 +16,8 @@ from imblearn.combine import SMOTEENN
 TRAIN_DATA_PATH = '/home/avilleira/TFG/tfg/data/training_data.csv'
 DU_SET_LIST = ['iemg', 'variance', 'waveform length', 'zero crossing', 'slope sign change', 'willison amplitude']
 OUTPUTS = ['REST', 'STDUP', 'SITDN', 'WAK']
+RANDOM_N = 42 # Used to indicate that a random selecting sampling is doing
+SVM_DEGREE = 2
 
 
 def is_str_list(str_list):
@@ -82,10 +84,35 @@ def PCA_transform(input_train):
     plt.show()
 
 
-def balance_dataset(input, output):
+def balance_dataset(input_train, input_test, input_val, output_train):
     """
-    This function includes all the fu
+    This function includes all the functionality in charge of the balancing,
+    scaling of the dataset
+
+    :param input_train: Inputs train dataframe
+    :type: pandas.Dataframe()
+
+    :param input_test: Inputs test dataframe
+    :type: pandas.Dataframe()
+
+    :param output_train: Outputs test dataframe
+    :type: pandas.Dataframe
     """
+    # While the dataset is imbalanced, it must be balanced
+    # SMOTEENN is balances under and over
+    smote_enn = SMOTEENN(random_state=RANDOM_N)
+    # Standard Scaler
+    scaler = StandardScaler()
+
+    #Balancing an scaling the train dataset
+    input_train_resampled, output_train_resampled = smote_enn.fit_resample(input_train, output_train)
+    input_train_resampled = scaler.fit_transform(input_train_resampled)
+    # Scaling validation
+    input_val_resampled = scaler.transform(input_val)
+    # Scaling test values
+    input_test_resampled = scaler.transform(input_test)
+
+    return input_train_resampled, output_train_resampled, input_test_resampled, input_val_resampled
 
 
 def main():
@@ -94,7 +121,11 @@ def main():
     
     # Reading from the csv file:
     data_svm = pd.read_csv(TRAIN_DATA_PATH)
-    
+
+    # Polynomial Kernel with degree 2, using OnevsOneClassifier
+    svm_mdl = svm.SVC(kernel="poly", degree=SVM_DEGREE)
+    svm_mdl = OneVsOneClassifier(svm_mdl)
+
     # Transforming string columns to list
     for col in data_svm.columns:
         if data_svm[col].apply(is_str_list).any():
@@ -107,41 +138,35 @@ def main():
 
     X = pd.concat(flattened_columns, axis=1)
     Y = data_svm['output']
-
-    # Polynomial Kernel with degree 2, using OnevsOneClassifier
-    svm_mdl = svm.SVC(kernel="poly", degree=2)
-    svm_mdl = OneVsOneClassifier(svm_mdl)
-
-    # While the dataset is unbalance, it must be balanced
-    # SMOTEENN balances under and over
-    smote_enn = SMOTEENN(random_state=42)
-    x_resampled, y_resampled = smote_enn.fit_resample(X, Y)
-    x_resampled = StandardScaler().fit_transform(x_resampled)
-
     # The dataset is needed to be split in order to train, validate and test
     # Train and validation: 80% and test: 20%
-    X_train_val, X_test, Y_train_val, Y_test = train_test_split(x_resampled, y_resampled, test_size=0.2,
+    X_train_val, X_test, Y_train_val, Y_test = train_test_split(X, Y, test_size=0.2,
                                                     random_state=42)
     # Splitting training dataset in train and validation
     X_train, X_val, Y_train, Y_val = train_test_split(X_train_val, Y_train_val,
                                         test_size=0.3, random_state=42)
     # Model training
-    print("Starting training")
-    print("PCA")
-    # PCA_transform(X_train)
+    
+    print("Balancing...")
+    X_train, Y_train, X_test, X_val = balance_dataset(X_train, X_test, X_val, Y_train)
+    print("Finished Balancing")
 
+    print("Starting training...")
     svm_mdl.fit(X_train, Y_train)
     # Saving it
-    # joblib.dump(svm_mdl, '../data/svm_model.joblib')
-
+    joblib.dump(svm_mdl, '../data/svm_model.joblib')
+    # Evaluation time
+    print("Evaluating...")
+    y_pred = svm_mdl.predict(X_val)
+    print(f"Accuracy: {accuracy_score(Y_val, y_pred) * 100}")
     # Salida predicha
     #svm_mdl = joblib.load('../data/svm_model.joblib')
+    print("Test...")
     y_pred = svm_mdl.predict(X_test)
     # Error en la precisión
     acc = accuracy_score(Y_test, y_pred) * 100
     print(f"Accuracy: {acc}")
     get_confusion_matrix(svm_mdl, X_test, y_pred, Y_test)
-
 
 
 if __name__ == "__main__":
