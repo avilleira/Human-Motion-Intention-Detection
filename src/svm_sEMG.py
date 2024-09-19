@@ -11,6 +11,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from imblearn.combine import SMOTEENN
+from imblearn.under_sampling import RandomUnderSampler
 
 
 TRAIN_DATA_PATH = '/home/avilleira/TFG/tfg/data/training_data.csv'
@@ -113,12 +114,14 @@ def balance_dataset(input, output):
     """
     # While the dataset is imbalanced, it must be balanced
     # SMOTEENN is balances under and over
-    smote_enn = SMOTEENN(random_state=RANDOM_N)
+    # smote_enn = SMOTEENN(random_state=RANDOM_N)
+    # Intialize RandomUnderSampler
+    under_sampler = RandomUnderSampler(random_state=RANDOM_N)
     # Standard Scaler
     scaler = StandardScaler()
 
     #Balancing an scaling the train dataset
-    input_resampled, output_resampled = smote_enn.fit_resample(input, output)
+    input_resampled, output_resampled = under_sampler.fit_resample(input, output)
     input_resampled = scaler.fit_transform(input_resampled)
 
     return input_resampled, output_resampled
@@ -147,6 +150,7 @@ def main():
 
     X = pd.concat(flattened_columns, axis=1)
     Y = data_svm['output']
+    plot_data_hist(Y)
 
     print("Balancing...")
     X, Y = balance_dataset(X, Y)
@@ -161,18 +165,19 @@ def main():
                                         test_size=0.3, random_state=42)
     # Model training
     
-    # plot_data_hist(Y_test)
+    plot_data_hist(Y_test)
 
     print("Starting training...")
     svm_mdl.fit(X_train, Y_train)
     # Saving it
-    joblib.dump(svm_mdl, '../data/svm_model.joblib')
+    # joblib.dump(svm_mdl, '../data/svm_model.joblib')
     # Evaluation time
     print("Evaluating...")
+    # svm_mdl = joblib.load('../models/svm_model.joblib')
     y_pred = svm_mdl.predict(X_val)
     print(f"Accuracy: {accuracy_score(Y_val, y_pred) * 100}")
     # Salida predicha
-    #svm_mdl = joblib.load('../data/svm_model.joblib')
+    
     print("Test...")
     y_pred = svm_mdl.predict(X_test)
     # Error en la precisión
