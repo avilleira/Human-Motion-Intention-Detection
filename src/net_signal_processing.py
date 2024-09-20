@@ -106,7 +106,7 @@ def main():
                 signals_matrix_arr = define_matrix(windowed_signal, signals_matrix_arr)
 
             #Exporting to npy matrixes
-            export_matrix(signals_matrix_arr, activity_array, action)
+            # export_matrix(signals_matrix_arr, activity_array, action)
         print(f"{sub} ended")
 
     return(EXIT_SUCCESS)
