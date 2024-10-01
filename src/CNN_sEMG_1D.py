@@ -124,7 +124,7 @@ class EMG_CNN(nn.Module):
     def __init__(self):
         super().__init__()
         self.conv1 = nn.Conv1d(in_channels=9, out_channels=16, kernel_size=5, stride=1, padding=1)
-        self.dropout = nn.Dropout(DROP_N)  # Ajusta la tasa según sea necesario
+        self.dropout = nn.Dropout(DROP_N)
         self.conv2 = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=5, stride=1, padding=1)
         self.conv3 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=5, stride=1, padding=1)
         self.conv4 = nn.Conv1d(in_channels=64, out_channels=128, kernel_size=5, stride=1, padding=1)
@@ -132,8 +132,8 @@ class EMG_CNN(nn.Module):
 
         self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
 
-        self.fc1 = nn.Linear(self._get_fc_input_size(), 256)  # Tamaño dinámico
-        self.fc2 = nn.Linear(256, 128)  # Tamaño dinámico
+        self.fc1 = nn.Linear(self._get_fc_input_size(), 256)  # Dynamic size
+        self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, 4)  # 4 clases
 
         self.bn1 = nn.BatchNorm1d(16)
@@ -150,20 +150,19 @@ class EMG_CNN(nn.Module):
             x = self.pool(F.relu(self.conv2(x)))
             x = self.pool(F.relu(self.conv3(x)))
             x = self.pool(F.relu(self.conv4(x)))
-            #x = self.pool(F.relu(self.conv5(x)))
 
-            return x.numel()  # Número total de elementos
+            return x.numel()
 
     def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))  # ReLU después de BN
+        x = self.pool(F.relu(self.conv1(x)))  
         x = self.dropout(x)
-        x = self.pool(F.relu(self.conv2(x)))  # ReLU después de BN
+        x = self.pool(F.relu(self.conv2(x)))  
         x = self.dropout(x)
-        x = self.pool(F.relu(self.conv3(x)))  # ReLU después de BN
+        x = self.pool(F.relu(self.conv3(x)))  
         x = self.dropout(x)
-        x = self.pool(F.relu(self.conv4(x)))  # ReLU después de BN
+        x = self.pool(F.relu(self.conv4(x)))  
 
-        x = x.view(x.size(0), -1)  # Usar el tamaño dinámico
+        x = x.view(x.size(0), -1) 
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
         x = F.relu(self.fc2(x))
@@ -183,13 +182,11 @@ def plot_confusion_matrix(model, test_loader):
             all_labels.extend(labels.cpu().numpy())
             all_preds.extend(predicted.cpu().numpy())
 
-    # Calcular la matriz de confusión
-    cm = confusion_matrix(all_labels, all_preds)
 
-    # Normalizar la matriz de confusión para que muestre porcentajes
+    cm = confusion_matrix(all_labels, all_preds)
+    # Plot percentage
     cm_percentage = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
 
-    # Dibujar la matriz de confusión con porcentajes
     sns.heatmap(cm_percentage, annot=True, fmt='.2f', cmap='Blues',
                 xticklabels=OUTPUTS, yticklabels=OUTPUTS)
     plt.xlabel('Predicted')
@@ -199,24 +196,23 @@ def plot_confusion_matrix(model, test_loader):
 
 
 def evaluate_model(model, test_loader):
-    model.eval()  # Poner el modelo en modo de evaluación
+    model.eval()
     correct = 0
     total = 0
     all_labels = []
     all_preds = []
 
-    with torch.no_grad():  # Desactivar el cálculo de gradientes
+    with torch.no_grad():
         for data, labels in test_loader:
-            outputs = model(data)  # Realizar la predicción
-            _, predicted = torch.max(outputs, 1)  # Obtener la clase con la mayor probabilidad
+            outputs = model(data)
+            _, predicted = torch.max(outputs, 1)
             total += labels.size(0)
-            correct += (predicted == labels).sum().item()  # Contar las predicciones correctas
-            # Guardar las predicciones y las etiquetas reales para calcular métricas
+            correct += (predicted == labels).sum().item()
+
             all_labels.extend(labels.cpu().numpy())
             all_preds.extend(predicted.cpu().numpy())
     
     accuracy = correct / total
-    # Calcular precision, recall y F1-score
     report = classification_report(all_labels, all_preds, output_dict=True)
     precision = report['weighted avg']['precision']
     recall = report['weighted avg']['recall']
@@ -226,16 +222,15 @@ def evaluate_model(model, test_loader):
 
 def plot_data_hist(data, dataset_name):
 
-    plt.rc('font', size=14)          # Texto normal
-    plt.rc('axes', titlesize=16)     # Título de los ejes
-    plt.rc('axes', labelsize=14)     # Etiquetas de los ejes
-    plt.rc('xtick', labelsize=12)    # Ticks del eje X
-    plt.rc('ytick', labelsize=12)    # Ticks del eje Y
-    plt.rc('legend', fontsize=12)    # Tamaño de la fuente de las leyendas
-    plt.rc('figure', titlesize=18)   # Tamaño del título de la figura
+    plt.rc('font', size=14)         
+    plt.rc('axes', titlesize=16)     
+    plt.rc('axes', labelsize=14)     
+    plt.rc('xtick', labelsize=12)    
+    plt.rc('ytick', labelsize=12)    
+    plt.rc('legend', fontsize=12)    
+    plt.rc('figure', titlesize=18)
 
-    # Extraer etiquetas desde el dataset
-    labels = [data[i][1].item() for i in range(len(data))]  # Asumiendo que la etiqueta es el segundo elemento
+    labels = [data[i][1].item() for i in range(len(data))] 
 
     plt.hist(labels, bins='auto', alpha=0.7, color='blue', edgecolor='black')
     plt.title(f'{dataset_name} Dataset')
@@ -251,30 +246,27 @@ def plot_data_hist(data, dataset_name):
 
 
 def split_dataset(data, subjects, labels, dataset_class):
-    # GroupShuffleSplit para la primera división (entrenamiento vs resto)
+    # GroupShuffleSplit train and rest
     gss = GroupShuffleSplit(n_splits=1, train_size=TRAIN_SIZE, random_state=42)
     
     for train_idx, temp_idx in gss.split(data, labels, groups=subjects):
         
-        # Segundo GroupShuffleSplit para dividir el 30% restante en validación y prueba
+        # Groupshufflesplit for validation and test
         gss_val_test = GroupShuffleSplit(n_splits=1, train_size=VAL_SIZE / (VAL_SIZE + TEST_SIZE), random_state=42)
         val_idx, test_idx = next(gss_val_test.split(data[temp_idx], labels[temp_idx], groups=np.array(subjects)[temp_idx]))
-        
-        # Ajustar los índices a los originales
         val_idx = temp_idx[val_idx]
         test_idx = temp_idx[test_idx]
 
-        # Crear subconjuntos de entrenamiento, validación y prueba
+        # Subsets
         train_dataset = torch.utils.data.Subset(dataset_class, train_idx)
         val_dataset = torch.utils.data.Subset(dataset_class, val_idx)
         test_dataset = torch.utils.data.Subset(dataset_class, test_idx)
         
-        # Crear los DataLoaders
+        # Dataloaders
         train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=True)
         test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True)
         
-        # # Plots (si tienes una función para esto)
         # print(f"Tamaño del conjunto de entrenamiento: {len(train_idx)}")
         # print(f"Tamaño del conjunto de validación: {len(val_idx)}")
         # print(f"Tamaño del conjunto de prueba: {len(test_idx)}")
@@ -290,12 +282,12 @@ def train_and_evaluate(cnn_net, train_loader, val_loader, test_loader, optimizer
     train_losses = []
     val_losses = []
 
-    plt.ion()  # Activar modo interactivo para matplotlib
+    plt.ion()  # Interactive mode
     fig, ax = plt.subplots()
     line_train, = ax.plot([], [], label='Train Loss', color='blue')
     line_val, = ax.plot([], [], label='Validation Loss', color='orange')
     ax.set_xlim(0, EPOCH_N)
-    ax.set_ylim(0, 1)  # Ajusta el límite según lo que esperas
+    ax.set_ylim(0, 1) 
     ax.set_xlabel('Epochs')
     ax.set_ylabel('Loss')
     ax.legend()
@@ -311,7 +303,7 @@ def train_and_evaluate(cnn_net, train_loader, val_loader, test_loader, optimizer
         epoch_train_loss = 0
         for data, labels in train_loader:
             optimizer.zero_grad() # Reset the gradients
-            outputs = cnn_net(data)  # data ya tiene la forma correcta (BATCH_SIZE, 9, 150)
+            outputs = cnn_net(data)  # (BATCH_SIZE, 9, 150)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -321,9 +313,9 @@ def train_and_evaluate(cnn_net, train_loader, val_loader, test_loader, optimizer
         train_losses.append(avg_train_loss)
 
         # --- Validation phase ---
-        cnn_net.eval()  # Cambiar a modo evaluación
+        cnn_net.eval()  # Evaluation phase
         epoch_val_loss = 0
-        with torch.no_grad():  # Desactivar el cálculo de gradientes
+        with torch.no_grad(): 
             for data, labels in val_loader:
                 outputs = cnn_net(data)
                 loss = criterion(outputs, labels)
@@ -337,20 +329,18 @@ def train_and_evaluate(cnn_net, train_loader, val_loader, test_loader, optimizer
         line_train.set_ydata(train_losses)
         line_val.set_xdata(np.arange(1, epoch + 2))
         line_val.set_ydata(val_losses)
-        ax.set_ylim(0, max(max(train_losses), max(val_losses)))  # Ajustar los límites dinámicamente
+        ax.set_ylim(0, max(max(train_losses), max(val_losses)))
         plt.draw()
-        plt.pause(0.01)  # Pausar para que se actualice la gráfica
+        plt.pause(0.01)  # uploading matplot
 
         print(f"Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Validation Loss: {avg_val_loss:.4f}")
         # Verificar early stopping
         early_stopping(avg_val_loss, cnn_net)
         if early_stopping.early_stop:
-            print("Finalizando el entrenamiento debido a early stopping.")
             break
 
     print("Training complete")
 
-        # Evaluar precisión en el conjunto de prueba
     time_1 = time.monotonic_ns()
     test_accuracy, precision, recall, f1_score = evaluate_model(cnn_net, test_loader)
     time_2 = ((time.monotonic_ns() - time_1) / len(test_loader)) / MILLION
@@ -361,11 +351,12 @@ def train_and_evaluate(cnn_net, train_loader, val_loader, test_loader, optimizer
     print(f"Test f1: {f1_score:.4f}")
 
 
-    plt.ioff()  # Desactivar el modo interactivo
-    plt.show()  # Mostrar la gráfica final
+    plt.ioff() 
+    plt.show()
 
 def main():
-    # Cargar el dataset
+
+
     dataset = sEMG_Dataset()
     print("Dataset created")
     plot_data_hist(dataset, "Imbalanced")
@@ -375,17 +366,18 @@ def main():
     print("Dataset balanced")
     # Splitting Dataset in Train, validation and test
     train_loader, val_loader, test_loader = split_dataset(dataset.data, dataset.subjects, dataset.labels, dataset)
-    # Inicializar el modelo, la función de pérdida y el optimizador
+    # Initialize model, optimizer and criterion
     cnn_net = EMG_CNN()
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.RMSprop(cnn_net.parameters(), lr=0.001, alpha=0.99)
 
     train_and_evaluate(cnn_net, train_loader, val_loader, test_loader, optimizer, criterion, EPOCH_N)
-    # Evaluar precisión en el conjunto de prueba
+
+    # Confusion matrix
     plot_confusion_matrix(cnn_net, test_loader)
 
-    plt.ioff()  # Desactivar el modo interactivo
-    plt.show()  # Mostrar la gráfica final
+    plt.ioff() 
+    plt.show() 
 
 if __name__ == "__main__":
     main()
