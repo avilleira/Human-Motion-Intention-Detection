@@ -9,8 +9,9 @@ from sklearn.multiclass import OneVsOneClassifier
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, recall_score, precision_score
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import GroupShuffleSplit, cross_val_score
 from imblearn.under_sampling import RandomUnderSampler
+import time
 
 
 TRAIN_DATA_PATH = '/home/avilleira/TFG/tfg/data/training_data.csv'
@@ -18,6 +19,8 @@ DU_SET_LIST = ['iemg', 'variance', 'waveform length', 'zero crossing', 'slope si
 OUTPUTS = ['REST', 'STDUP', 'SITDN', 'WAK']
 RANDOM_N = 42 # Used to indicate that a random selecting sampling is doing
 SVM_DEGREE = 2
+
+MILLION = 1_000_000
 
 
 def is_str_list(str_list):
@@ -56,10 +59,12 @@ def get_confusion_matrix(mdl, input_test, y_predicted, output_test):
     # Visualizar la matriz de confusión
     cm_percentage = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
     plt.figure(figsize=(8, 6))
-    sns.heatmap(cm_percentage, annot=np.around(cm_percentage, 2), fmt='g', cmap='YlOrBr', xticklabels=OUTPUTS, yticklabels=OUTPUTS)
+    sns.heatmap(cm_percentage, annot=np.around(cm_percentage, 2), fmt='g', cmap='YlOrBr', xticklabels=OUTPUTS, yticklabels=OUTPUTS, annot_kws={"size":12})
     plt.xlabel('Predicted Labels', fontsize=18)
     plt.ylabel('True Labels', fontsize=18)
-    plt.title(' SVM Confusion Matrix')
+    plt.title(' SVM Confusion Matrix', fontsize=15)
+    plt.xticks(fontsize=14)  # Tamaño de las etiquetas del eje X
+    plt.yticks(fontsize=14)  # Tamaño de las etiquetas del eje Y
     plt.show()
 
 
@@ -126,6 +131,9 @@ def balance_dataset(input, output):
     #Balancing an scaling the train dataset
     input_resampled, output_resampled = under_sampler.fit_resample(input_no_sub, output)
     input_resampled = scaler.fit_transform(input_resampled)
+
+    # Keeping scaler
+    joblib.dump(scaler, 'scaler.pkl')  # Export the scaler to 'scaler.pkl'
     
     # Back to Dataframe
     input_resampled = pd.DataFrame(input_resampled, columns=input_no_sub.columns)
@@ -141,12 +149,13 @@ def balance_dataset(input, output):
 
 def main():
 
+    
     flattened_columns = []
     
     # Reading from the csv file:
     data_svm = pd.read_csv(TRAIN_DATA_PATH)
 
-    # Polynomial Kernel with degree 2, using OnevsOneClassifier
+    # Polynomial Kernel with degree 4, using OnevsOneClassifier
     svm_mdl = svm.SVC(kernel="poly", degree=4, coef0=1.0, C=1.0)
     svm_mdl = OneVsOneClassifier(svm_mdl)
 
@@ -166,6 +175,7 @@ def main():
         flattened_columns.append(flatten_column(data_svm, col))
     
     X = pd.concat(flattened_columns, axis=1)
+
     # Adding the subject array before balancing
     X['subject'] = sub_arr
     Y = data_svm['output']
@@ -200,7 +210,7 @@ def main():
     svm_mdl.fit(X_train, Y_train)
     
     # Saving it
-    joblib.dump(svm_mdl, '../models/svm_model.joblib')
+    # joblib.dump(svm_mdl, '../models/svm_model.joblib')
     # Evaluation time
     print("Evaluating...")
     # svm_mdl = joblib.load('../models/svm_model.joblib')
@@ -208,8 +218,11 @@ def main():
     print(f"Accuracy: {accuracy_score(Y_val, y_pred) * 100}")
 
     print("Test...")
-    print(type(X_test))
+    # Starting time counter
+    start_time = time.monotonic_ns()
     y_pred = svm_mdl.predict(X_test)
+    inf_time = ((time.monotonic_ns() - start_time) / len(X_test)) / MILLION
+    print("Inference time", inf_time)
 
     acc = accuracy_score(Y_test, y_pred) * 100
     # F1 score

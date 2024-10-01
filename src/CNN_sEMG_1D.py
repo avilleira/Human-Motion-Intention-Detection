@@ -12,6 +12,7 @@ from sklearn.metrics import classification_report
 import torch.nn.functional as F
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
+import time 
 
 
 # MACROS
@@ -29,6 +30,8 @@ TEST_SIZE = 0.15
 BATCH_SIZE = 32
 EPOCH_N = 100
 DROP_N = 0.55
+
+MILLION = 1_000_000
 
 OUTPUTS = ['REST', 'STDUP', 'SITDN', 'WAK']
 
@@ -348,11 +351,14 @@ def train_and_evaluate(cnn_net, train_loader, val_loader, test_loader, optimizer
     print("Training complete")
 
         # Evaluar precisión en el conjunto de prueba
+    time_1 = time.monotonic_ns()
     test_accuracy, precision, recall, f1_score = evaluate_model(cnn_net, test_loader)
+    time_2 = ((time.monotonic_ns() - time_1) / len(test_loader)) / MILLION
+    print(f"Inference time: {time_2}")
     print(f"Test Accuracy: {test_accuracy:.4f}")
-    print(f"Test Accuracy: {precision:.4f}")
-    print(f"Test Accuracy: {recall:.4f}")
-    print(f"Test Accuracy: {recall:.4f}")
+    print(f"Test precision: {precision:.4f}")
+    print(f"Test rec: {recall:.4f}")
+    print(f"Test f1: {f1_score:.4f}")
 
 
     plt.ioff()  # Desactivar el modo interactivo

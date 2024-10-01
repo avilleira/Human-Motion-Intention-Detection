@@ -1,6 +1,5 @@
 import sys
 import os
-import time
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,6 +8,7 @@ from matplotlib import ticker
 from scipy import signal
 from scipy import integrate
 import pywt
+import time
 
 # MACROS
 
@@ -44,8 +44,8 @@ WVLT_THRHLD_MODE = "soft"
 WVLT_PACKET_TYPE = 'db8'
 WVLT_LEVEL = 9
 
-SEMG_WINDOW_SIZE = 150
-WAK_WINDOW_SIZE = 80
+SEMG_WINDOW_SIZE = 150 # Window size for STDUP and WAK
+WAK_WINDOW_SIZE = 80 # Window size for WAK
 
 WILLISON_THRESHOLD = 0.0005
 
@@ -346,17 +346,18 @@ def get_max_wak_contraction_value(sub, muscle):
 
 def get_notch_filtered_signal(signal_arr, freq_to_remove, quality_factor, fs):
 
-    signal_data = signal_arr
+    filtered_signal = signal_arr
 
-    # Calculating harmonics in a array
-    harmonics = np.array([freq_to_remove * i for i in range(1, fs // freq_to_remove)]) # Comprehension list
+    # Calculating harmonics in a array. Applying Nyquist
+    harmonics = np.array([freq_to_remove * i for i in range(1, int((fs / 2) // freq_to_remove) + 1)]) # Comprehension list
 
     for fi in harmonics:
         # Notch filter: iirnotch returns num y denum of the IIR filter. The frequency to remove should be normalized
-        num, denum = signal.iirnotch(fi/(fs/2), quality_factor, fs)
+        normalized_freq = fi / (fs / 2)
+        num, denum = signal.iirnotch(normalized_freq, quality_factor)
 
         #Aplying filter, applying it backwards and forwards
-        filtered_signal = signal.filtfilt(num, denum, signal_data)
+        filtered_signal = signal.filtfilt(num, denum, filtered_signal)
 
     return filtered_signal
 
@@ -367,6 +368,7 @@ def get_butterworth_filtered_signal(signal_arr, type='bandpass', cut_freq=np.arr
     filter is set by default.
     """
 
+    # Check if the signal is store in an array
     if not isinstance(cut_freq, np.ndarray):
         cut_freq = np.array(cut_freq)
     
@@ -474,7 +476,6 @@ def plot_sEMG_signal(sub, df, action, muscles=['all'], joint='', filtered=False,
     :param envelope: Indicates if the envelope signal wants to be plotted
     :type: Bool 
     """
-
     # Creating figure
     fig = plt.figure('Subject: ' + sub + ' action ' + action + ' signal')
 
@@ -512,40 +513,58 @@ def plot_sEMG_signal(sub, df, action, muscles=['all'], joint='', filtered=False,
 
     if muscles[0] == 'Time':
         muscles = muscles[1:]
+    
+    #filterd_df = df.filter(like='Filtered')
+    #filterd_df['Time'] = df['Time']
+    #filterd_df.set_index('Time', inplace=True)
+#
+    ## Crear la figura y los ejes
+    #fig, ax = plt.subplots()
+#
+    ## Plotear los datos
+    #filterd_df.plot(ax=ax, legend=False)
+#
+    ## Añadir título
+    #ax.set_title(action, fontsize=16)  # Cambia 'Título de la Figura' por el título que desees
+#
+    ## Aumentar las fuentes de los elementos
+    #ax.set_xlabel('Time', fontsize=20)  # Título del eje X
+    #ax.set_ylabel('Valores', fontsize=20)  # Título del eje Y
+    #ax.tick_params(axis='both', labelsize=20)  # Tamaño de las etiquetas de los ejes
+    #plt.legend(fontsize=15)  # Tamaño de la leyenda si está activa
 
-    #joint = 'Kinematic: ' + joint
-
-    #joint_data = kinem_df[joint] / 180
-    #kinem_df = get_slope(kinem_df, joint)
-
-    #slope = 'Slope: ' + joint
-    #print(np.mean(kinem_df[slope]))
+    # Mostrar la figura
+    #plt.show()
+    #return
     # Starts to plot
     for muscle in muscles:
         ax = fig.add_subplot(plt_index)
         if envelope == True: # If the envelope wants to be plotted
             ax.plot(np.array(df['Time']), np.array(df[muscle]), color='coral')
         elif filtered == True:
-            ax.plot(np.array(df['Time']), np.array(df[muscle]), color='darkgreen')
+            ax.plot(np.array(df['Time']), np.array(df["sEMG: medial gastrocnemius"]), alpha=0.5, label='Señal sin filtrar')
+            ax.plot(np.array(df['Time']), np.array(df[muscle]), color='darkgreen', label='señal filtrada')
             #ax.plot(np.array(df['Time']), np.array(kinem_df[slope]), color='red')
-
         else:
             ax.plot(np.array(df['Time']), np.array(df[muscle]))
 
-        ax.set_ylim(ymin-PLT_AMPLITUDE_OFFSET, ymax+PLT_AMPLITUDE_OFFSET)
-        ax.set_title(muscle)
-        ax.set_xlabel('Time [sec]')
-        ax.set_ylabel('Value')
+        #ax.set_ylim(ymin-PLT_AMPLITUDE_OFFSET, ymax+PLT_AMPLITUDE_OFFSET)
+        ax.set_title(muscle, fontsize=15)
+        ax.set_xlabel('Time [sec]', fontsize=15)
+        ax.set_ylabel('Value [mV]', fontsize=15)
 
         # Putting the tickers
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.tick_params(axis='both', labelsize=12)  # Tamaño de las etiquetas de los ejes
 
         plt_index += 1
 
     fig.tight_layout(h_pad=0)
     fig.subplots_adjust(hspace=0.7)
     ticker.AutoLocator()
+    plt.legend(fontsize=14)
+    plt.show()
 
 
 def plot_spectrogram(sub, df, action, muscle='all'):
@@ -556,13 +575,17 @@ def plot_spectrogram(sub, df, action, muscle='all'):
         muscle_prmpt = 'sEMG: ' + muscle
         ax = spect_fig.add_subplot(111)
 
-        notch = get_notch_filtered_signal(df[muscle_prmpt], NOTCH_FREQ_TO_REMOVE, NOTCH_QUALITY_FACTOR, FREQ_SAMPLING)
-        filtered_signal = get_butterworth_filtered_signal(notch, 'bandpass', [BUTTER_LOW_FREQ, BUTTER_HIGH_FREQ], FREQ_SAMPLING, BUTTER_ORDER)
-        freq, times, amp_density = get_signal_spectrogram(filtered_signal)
+        filtered_signal = get_notch_filtered_signal(df[muscle_prmpt], NOTCH_FREQ_TO_REMOVE,
+                                NOTCH_QUALITY_FACTOR, FREQ_SAMPLING)
+        filtered_signal = get_butterworth_filtered_signal(filtered_signal, 'bandpass', 
+                                [BUTTER_LOW_FREQ, BUTTER_HIGH_FREQ], FREQ_SAMPLING, BUTTER_ORDER)
+        #filtered_signal = get_wavelet_filtered_signal(filtered_signal)
+
+        freq, times, amp_density = get_signal_spectrogram(df[muscle_prmpt])
 
         ax.pcolormesh(times, freq, 10 * np.log10(amp_density))
-        ax.set_xlabel('Time [sec]')
-        ax.set_ylabel('Frquency [Hz]')
+        ax.set_xlabel('Time [sec]', fontsize=15)
+        ax.set_ylabel('Frequency [Hz]', fontsize=15)
 
 
 # -------------- ACTION MENUS --------------
@@ -580,7 +603,6 @@ def signal_processing(df, muscle, filters_list):
     :param filters_list: List of all the filters are made in the process
     :type: string List
     """
-
     muscle_signal = df[muscle].values
     
     # If there are no filters to do, return the original one
@@ -657,11 +679,13 @@ def window_sliding(muscle, df, action):
     if (action == "WAK"):
         window_size = WAK_WINDOW_SIZE
     else:
-        window_size =SEMG_WINDOW_SIZE
+        window_size = SEMG_WINDOW_SIZE
 
     # Generating the window sliding
     signal_arr = df[muscle].to_numpy()
-    slide_signal_arr = [signal_arr[i:i + window_size] for i in range(0, len(signal_arr), window_size)]
+    slide_signal_arr = [signal_arr[i:i + window_size] 
+                        for i in range(0, len(signal_arr), window_size)
+                        if len(signal_arr[i:i + window_size]) == window_size] # Check that all the windows has the same length
     return slide_signal_arr
 
 
@@ -806,7 +830,7 @@ def get_willison_amplitude(windowed_signal_arr):
     return willison_arr
 
 
-def generate_data_csv(inputs: dict, output_action: str):
+def generate_data_csv(inputs: dict, output_action: str, sub: str):
     """
     Generate the dataframe in order to create the dataset.
     The structure is:
@@ -825,12 +849,14 @@ def generate_data_csv(inputs: dict, output_action: str):
     
     # Get the different elements from all the arrays at the same time
     for key in inputs.keys():
+        print(len(inputs[key]), key)
         data_list = [list(data) for data in zip(*inputs[key])]
         df[key] = data_list
 
     # Add output as the last column
     df['output'] = ACTIONS_DICT[output_action]
-
+    # Adding the subject column
+    df['subject'] = int(sub.replace("Sub", ""))
     # Save it in a CSV
     if os.path.isfile(TRAIN_DATA_PATH):
         df.to_csv(TRAIN_DATA_PATH, mode='a', header=False, index=False)
@@ -864,8 +890,9 @@ def main():
                 signal_processing(semg_df, muscle, FILTER_LIST)
                 # Normalizing data
                 normalize_data(sub, semg_df, muscle, filtered=True)
-                
+        
                 # Windowing signal
+                muscle = "Filtered " + muscle
                 windowed_signal = window_sliding(muscle, semg_df, action)
                 # Extracting activated signal and desactivated part
                 act_windowed_signal, des_windowed_signal = get_activity_in_signal(sub, windowed_signal, action)
@@ -886,36 +913,16 @@ def main():
                     else:
                         des_data_dict[feature].append(des_signal_features[feature])
 
+            #if (action == "STDUP" and sub == "Sub36"):
+            #    plot_sEMG_signal(sub, semg_df, action, ['medial gastrocnemius'], filtered=True, envelope=False)
+            #    return
+            #continue
             # Generate the Data CSV
-            generate_data_csv(data_dict, action)
-            # No activity csv
-            generate_data_csv(des_data_dict, 'REST')
+            generate_data_csv(data_dict, action, sub)
+           # ### No activity csv
+            generate_data_csv(des_data_dict, 'REST', sub)
 
         print(f"{sub} finalizado")
-    
-    # if (muscle_str == 'all'):
-    #     for muscle in semg_df.columns:
-    #         if muscle == 'Time':
-    #             continue
-    #         signal_processing(semg_df, muscle, FILTER_LIST)
-    #         # signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
-    #         normalize_data(subject, semg_df, muscle, True)
-    #         windowed_signal = window_sliding(muscle, semg_df, act_str)
-    #         signal_features = get_Du_feature_set(windowed_signal)
-    #         generate_data_csv(signal_features, muscle, act_str)
-
-
-    # else:
-    #     muscle = 'sEMG: ' + muscle_str
-    #     signal_processing(semg_df, muscle, FILTER_LIST)
-    #     # signal_envelope(semg_df, muscle, ENVELOP_HIGH_CUT_FREQ, ENVELOP_LOW_CUT_FREQ, FREQ_SAMPLING, BUTTER_ORDER)
-    #     normalize_data(subject, semg_df, muscle, True)
-    #     windowed_signal = window_sliding(muscle, semg_df, act_str)
-    #     signal_features = get_Du_feature_set(windowed_signal)
-    #     generate_data_csv(signal_features, muscle, act_str)
-
-    # #plot_sEMG_signal(subject, semg_df, act_str, [muscle_str], filtered=True, envelope=False)
-    # plt.show()
 
 
 if __name__ == "__main__":
