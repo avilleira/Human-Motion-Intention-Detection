@@ -29,7 +29,9 @@ DROP_N = 0.5
 INPUT_SIZE = 9          
 HIDDEN_SIZE = 128        
 OUTPUT_SIZE = 4        
-LAYERS = 4         
+LAYERS = 4      
+
+TIME_GRAPHIC = 0.01
 
 OUTPUTS = ['REST', 'STDUP', 'SITDN', 'WAK']
 
@@ -195,11 +197,13 @@ def train_net(lstm_net, train_loader, val_loader, test_loader, optimizer, criter
         # Validation phase
         lstm_net.eval()
         epoch_val_loss = 0
+        # For the validation, the gradients are not uploaded
         with torch.no_grad():
             for data, labels in val_loader:
                 outputs = lstm_net(data)
                 loss = criterion(outputs, labels)
                 epoch_val_loss += loss.item()
+
         avg_val_loss = epoch_val_loss / len(val_loader)
         val_losses.append(avg_val_loss)
 
@@ -207,7 +211,9 @@ def train_net(lstm_net, train_loader, val_loader, test_loader, optimizer, criter
         line_train.set_ydata(train_losses)
         line_val.set_xdata(np.arange(1, epoch + 2))
         line_val.set_ydata(val_losses)
-        ax.set_ylim(0, max(max(train_losses), max(val_losses))) 
+        ax.set_ylim(0, max(max(train_losses), max(val_losses)))
+        
+        # update the graphic loss function
         plt.draw()
         plt.pause(0.01) 
 
@@ -216,7 +222,7 @@ def train_net(lstm_net, train_loader, val_loader, test_loader, optimizer, criter
     print("Training complete")
     test_accuracy = evaluate_model(lstm_net, test_loader)
     print(f"Test Accuracy: {test_accuracy:.4f}")
-
+    # Finish graphic
     plt.ioff()  
     plt.show()
 

@@ -51,15 +51,16 @@ def define_matrix(windowed_signal, signal_matrix_arr):
     return signal_matrix_arr
 
 
-def export_matrix(matrixes, activity, action):
-    
+def export_matrix(matrixes, activity, action, sub):
     for i in range(len(activity)):
         if activity[i] == 'R':
             dir = "REST"
         else:
             dir = action
         
+        sub_n = sub.replace("Sub", "")
         #Creating directory path if it not exists
+
         path = DATA_PATH + dir
         if not os.path.exists(path):
             os.makedirs(path)
@@ -68,7 +69,7 @@ def export_matrix(matrixes, activity, action):
         existing_files = [f for f in os.listdir(path) if f.endswith(".npy")]
         if existing_files:
             # Extract the max counter in the directory
-            num = [int(f.split('_')[1].split('.')[0]) for f in existing_files if f.startswith(f"{dir}_")]
+            num = [int(f.split('_')[2].split('.')[0]) for f in existing_files if f.startswith(f"{sub_n}_")]
             if num:
                 actual_count = max(num) + 1  # Continuar con el siguiente número
             else:
@@ -76,7 +77,8 @@ def export_matrix(matrixes, activity, action):
         else:
             actual_count = 1  # Si no hay archivos, comenzar desde 0
         
-        matrix_name = f"{dir}_{actual_count}.npy"
+        
+        matrix_name = f"{sub_n}_{dir}_{actual_count}.npy"
         np.save(os.path.join(path, matrix_name), matrixes[i])
 
 
@@ -101,12 +103,15 @@ def main():
                     continue
                 # Filters
                 sp.signal_processing(semg_df, muscle, FILTER_LIST)
+                # Normalizing data
+                # sp.normalize_data(sub, semg_df, muscle, filtered=True)
+                muscle = "Filtered " + muscle
                 windowed_signal = sp.window_sliding(muscle, semg_df, action)
                 # Saving the window in each determinated matrix
                 signals_matrix_arr = define_matrix(windowed_signal, signals_matrix_arr)
 
             #Exporting to npy matrixes
-            # export_matrix(signals_matrix_arr, activity_array, action)
+            export_matrix(signals_matrix_arr, activity_array, action, sub)
         print(f"{sub} ended")
 
     return(EXIT_SUCCESS)

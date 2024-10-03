@@ -30,6 +30,8 @@ TEST_SIZE = 0.15
 BATCH_SIZE = 32
 EPOCH_N = 100
 DROP_N = 0.55
+LEARNING_RATE = 0.001
+
 
 MILLION = 1_000_000
 
@@ -267,10 +269,6 @@ def split_dataset(data, subjects, labels, dataset_class):
         val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=True)
         test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True)
         
-        # print(f"Tamaño del conjunto de entrenamiento: {len(train_idx)}")
-        # print(f"Tamaño del conjunto de validación: {len(val_idx)}")
-        # print(f"Tamaño del conjunto de prueba: {len(test_idx)}")
-# 
         plot_data_hist(train_dataset, dataset_name="Train Dataset")
         plot_data_hist(val_dataset, dataset_name="Validation Dataset")
         plot_data_hist(test_dataset, dataset_name="Test Dataset")
@@ -369,7 +367,7 @@ def main():
     # Initialize model, optimizer and criterion
     cnn_net = EMG_CNN()
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.RMSprop(cnn_net.parameters(), lr=0.001, alpha=0.99)
+    optimizer = torch.optim.RMSprop(cnn_net.parameters(), lr=LEARNING_RATE, alpha=0.99)
 
     train_and_evaluate(cnn_net, train_loader, val_loader, test_loader, optimizer, criterion, EPOCH_N)
 
